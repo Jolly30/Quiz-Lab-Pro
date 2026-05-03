@@ -19,7 +19,9 @@ import {
   X,
   Plus,
   FileSearch,
-  HardDrive
+  HardDrive,
+  Pencil,
+  Save
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, signInAnonymously, signInWithCustomToken } from 'firebase/auth';
@@ -54,18 +56,44 @@ export default function App() {
   const [moduleName, setModuleName] = useState('');
   const [showConfirm, setShowConfirm] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [isProcessing, setIsProcessing] = useState(false); // <--- New state for AI loading
+  
+  // --- States for AI Processing & Feedback ---
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
+  const [progress, setProgress] = useState(0);
   
   const [answers, setAnswers] = useState({}); 
   const [fibInput, setFibInput] = useState({}); 
   const [revealed, setRevealed] = useState({});
   const [matchSelectedA, setMatchSelectedA] = useState({}); 
   const [matchTemp, setMatchTemp] = useState({}); 
+  const [editingModule, setEditingModule] = useState(null);
 
   const questions = activeSection ? (sections[activeSection] || []) : [];
   const unsubscribeRef = useRef(null);
 
-  // --- 1. INIT: Handles Local VS Code vs Cloud environments ---
+  // --- 1. Progress Bar Logic ---
+  useEffect(() => {
+    let interval;
+    if (isProcessing) {
+      setProgress(0);
+      interval = setInterval(() => {
+        setProgress((prev) => {
+          if (prev < 30) return prev + 1; // Faster start
+          if (prev < 80) return prev + 0.3; // Slower mid-range
+          if (prev < 98) return prev + 0.05; // Very slow near end
+          return prev;
+        });
+      }, 100);
+    } else if (isSuccess) {
+      setProgress(100);
+    } else {
+      setProgress(0);
+    }
+    return () => clearInterval(interval);
+  }, [isProcessing, isSuccess]);
+
+  // --- 2. INIT: Handles Local VS Code vs Cloud environments ---
   useEffect(() => {
     if (isLocalDev || !auth) {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -98,7 +126,7 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // --- 2. DATA SYNC (Cloud Only) ---
+  // --- 3. DATA SYNC (Cloud Only) ---
   useEffect(() => {
     if (isLocalDev || !user || !db || !appId) return;
 
@@ -137,13 +165,13 @@ export default function App() {
     };
   }, [user]);
 
-  // --- 3. THE NEW GEMINI AI IMPORT ENGINE ---
+  // --- 4. THE NEW GEMINI AI IMPORT ENGINE ---
   const handleAI_Import = async () => {
     if (!rawInput) return;
     setIsProcessing(true);
+    setIsSuccess(false);
 
     try {
-      // Talk to your Vercel Backend instead of Google!
       const response = await fetch('/api/parse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -156,18 +184,15 @@ export default function App() {
          throw new Error(data.error);
       }
 
-      // Parse the JSON exactly like before
       const rawResponseText = data.candidates[0].content.parts[0].text;
       const cleanJSON = JSON.parse(rawResponseText);
       
       const name = moduleName.trim() || `Module ${Object.keys(sections).length + 1}`;
       const newSections = { ...sections, [name]: cleanJSON };
       
-      // Save locally
       setSections(newSections);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(newSections));
       
-      // Save to Firebase (if connected)
       if (!isLocalDev && user && db && appId) {
         try {
           const safeDocId = getSafeDocId(name);
@@ -182,15 +207,21 @@ export default function App() {
         }
       }
 
-      setRawInput(''); 
-      setModuleName(''); 
-      setView('menu');
+      // Smooth transition to Success state
+      setIsProcessing(false);
+      setIsSuccess(true);
+      
+      setTimeout(() => {
+        setRawInput(''); 
+        setModuleName(''); 
+        setIsSuccess(false);
+        setView('menu');
+      }, 1500);
 
     } catch (error) {
       console.error("AI Parsing Failed:", error);
-      alert("The AI encountered an error formatting this text. Check the console for details: " + error.message);
-    } finally {
       setIsProcessing(false);
+      alert("The AI encountered an error formatting this text. Check the console for details: " + error.message);
     }
   };
 
@@ -276,6 +307,8 @@ export default function App() {
       </nav>
 
       <main className="max-w-4xl mx-auto p-4 md:p-8">
+        
+        {/* VIEW: MENU */}
         {view === 'menu' && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 animate-in fade-in duration-500">
             {Object.keys(sections).map(name => (
@@ -283,7 +316,8 @@ export default function App() {
                 <h3 className="text-lg font-bold text-white mb-1 pr-16">{name}</h3>
                 <p className="text-xs text-slate-500 uppercase font-black tracking-widest">{sections[name].filter(q => q.type !== 'header').length} Questions</p>
                 <div className="absolute top-4 right-4 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={(e) => { e.stopPropagation(); setShowConfirm(name); }} className="text-slate-400 hover:text-red-500 p-2 bg-slate-950 rounded-lg border border-slate-800 hover:border-red-500/50 transition-all shadow-xl" title="Delete Module"><Trash2 className="w-4 h-4" /></button>
+                    <button onClick={(e) => { e.stopPropagation(); setEditingModule(name); setView('edit'); window.scrollTo(0,0); }} className="text-slate-400 hover:text-blue-500 p-2 bg-slate-950 rounded-lg border border-slate-800 hover:border-blue-500/50 transition-all shadow-xl" title="Edit Module"><Pencil className="w-4 h-4" /></button>
+                    <button onClick={(e) => { e.stopPropagation(); setShowConfirm(name); }} className="text-slate-400 hover:text-red-500 p-2 bg-slate-950 rounded-lg border border-slate-800 hover:border-red-500/50 transition-all shadow-xl" title="Delete Module"><Trash2 className="w-4 h-4" /></button>
                 </div>
               </div>
             ))}
@@ -293,6 +327,7 @@ export default function App() {
           </div>
         )}
 
+        {/* VIEW: QUIZ */}
         {view === 'quiz' && (
           <div className="space-y-12 pb-40 animate-in slide-in-from-right-4 duration-300">
             <h2 className="text-3xl font-black text-white border-b border-slate-800 pb-4 tracking-tight uppercase italic">{activeSection}</h2>
@@ -300,7 +335,7 @@ export default function App() {
               if (q.type === 'header') {
                 questionCounter = 0; 
                 return (
-                  <div key={idx} className="pt-10 pb-4 border-l-4 border-blue-600 pl-6 bg-slate-900/50 rounded-r-2xl shadow-lg border border-slate-800">
+                  <div key={idx} className="pt-10 pb-4 border-l-4 border-blue-600 pl-6 bg-slate-900/50 rounded-r-2xl shadow-lg border-y border-r border-slate-800">
                     <div className="flex items-center gap-4">
                        <Layout className="text-blue-500 w-6 h-6" />
                        <h3 className="text-2xl font-black text-white tracking-tight uppercase italic">{q.text}</h3>
@@ -513,10 +548,10 @@ export default function App() {
               <div className="flex items-center gap-3">
                 <div className="p-3 bg-blue-500/10 rounded-2xl"><Wand2 className="text-blue-500 w-6 h-6" /></div>
                 <div>
-                  <h2 className="text-2xl font-black text-white uppercase italic leading-none mb-1">AI Import</h2>
+                  <h2 className="text-2xl font-black text-white uppercase italic leading-none mb-1">Text Import</h2>
                   <p className="text-slate-500 text-[10px] font-bold tracking-tight italic flex items-center gap-1">
                     <ShieldCheck className="w-3 h-3 text-green-400" />
-                    POWERED BY GEMINI 1.5 FLASH
+                    POWERED BY Yadanar
                   </p>
                 </div>
               </div>
@@ -525,29 +560,128 @@ export default function App() {
             <div className="mb-4 bg-blue-500/5 border border-blue-500/20 p-4 rounded-2xl flex gap-3 items-start">
                <FileSearch className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
                <p className="text-[11px] text-slate-400 leading-relaxed">
-                  <strong className="text-blue-400">AI Parser Active:</strong> Paste your raw, unformatted PDF or Word document text below. The AI will automatically structure the questions, detect answer keys, and build your interactive module.
+                  <strong className="text-blue-400">AI Parser Active:</strong> Paste your raw, unformatted PDF or Word document text below. The AI will automatically structure the questions, detect answer keys, and build your interactive module, parsing gonna take 1 to 2 minutes.
                </p>
             </div>
 
             <input type="text" value={moduleName} onChange={(e)=>setModuleName(e.target.value)} placeholder="Enter Module Name (e.g. MEO Class 3 Boiler)" className="w-full p-5 bg-slate-950 rounded-2xl border border-slate-800 mb-4 font-bold outline-none focus:border-blue-500 transition-all placeholder:text-slate-800 text-white" />
             <textarea value={rawInput} onChange={(e)=>setRawInput(e.target.value)} placeholder="Paste raw text here..." className="w-full h-80 p-6 bg-slate-950 rounded-3xl border border-slate-800 font-mono text-xs mb-6 outline-none focus:border-blue-500 transition-all leading-relaxed placeholder:text-slate-800 text-slate-300" />
             
+            {/* --- LOADING PROGRESS BAR --- */}
+            {(isProcessing || isSuccess) && (
+              <div className="w-full mb-6 animate-in fade-in duration-500">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest animate-pulse">
+                    {isSuccess ? 'Processing Complete!' : 'AI Analysis in Progress...'}
+                  </span>
+                  <span className="text-[10px] font-black text-slate-500 uppercase">
+                    {Math.round(progress)}%
+                  </span>
+                </div>
+                <div className="h-1.5 w-full bg-slate-950 rounded-full overflow-hidden border border-slate-800 shadow-inner">
+                  <div 
+                    className={`h-full shadow-[0_0_15px_rgba(59,130,246,0.5)] transition-all duration-500 ease-out ${isSuccess ? 'bg-green-500' : 'bg-blue-500'}`}
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
             <div className="flex flex-col md:flex-row gap-3">
               <button 
                 onClick={handleAI_Import} 
-                disabled={isProcessing || !rawInput}
-                className="flex-1 py-5 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-black uppercase shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] flex items-center justify-center gap-3"
+                disabled={isProcessing || isSuccess || !rawInput}
+                className={`flex-1 py-5 text-white rounded-2xl font-black uppercase shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] flex items-center justify-center gap-3 ${isSuccess ? 'bg-green-600 hover:bg-green-500' : 'bg-blue-600 hover:bg-blue-500'}`}
               >
                 {isProcessing ? (
                   <>
                     <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    AI is Parsing PDF...
+                    AI is Parsing...
+                  </>
+                ) : isSuccess ? (
+                  <>
+                    <CheckCircle2 className="w-6 h-6 text-white" />
+                    Module Created!
                   </>
                 ) : (
-                  <>Generate Module with AI</>
+                  <>Generate Module</>
                 )}
               </button>
               <button onClick={() => setView('menu')} className="md:px-10 py-5 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl font-black uppercase transition-all active:scale-[0.98]">Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {/* VIEW: EDIT MODULE */}
+        {view === 'edit' && editingModule && (
+          <div className="bg-slate-900 p-6 md:p-10 rounded-[2.5rem] border border-slate-800 shadow-2xl animate-in slide-in-from-bottom duration-500">
+            <div className="flex items-center gap-3 mb-8 border-b border-slate-800 pb-6">
+              <div className="p-3 bg-blue-500/10 rounded-2xl"><Pencil className="text-blue-500 w-6 h-6" /></div>
+              <h2 className="text-2xl font-black text-white uppercase italic leading-none">Edit Module: <span className="text-blue-500">{editingModule}</span></h2>
+            </div>
+
+            <div className="space-y-4 mb-8">
+              {sections[editingModule].map((q, idx) => (
+                <div key={idx} className="p-4 bg-slate-950 rounded-2xl border border-slate-800 focus-within:border-blue-500 transition-colors">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                      {q.type === 'header' ? 'Section Header' : `Question ${idx + 1} (${q.type})`}
+                    </span>
+                  </div>
+                  
+                  {/* Editable Text Area for the Question/Header */}
+                  <textarea
+                    value={q.type === 'header' ? q.text : q.question}
+                    onChange={(e) => {
+                      const updatedSections = { ...sections };
+                      if (q.type === 'header') {
+                        updatedSections[editingModule][idx].text = e.target.value;
+                      } else {
+                        updatedSections[editingModule][idx].question = e.target.value;
+                      }
+                      setSections(updatedSections);
+                    }}
+                    className="w-full bg-slate-900 text-white p-4 rounded-xl border border-slate-700 outline-none focus:border-blue-500 font-medium leading-relaxed resize-none min-h-[80px]"
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div className="flex flex-col md:flex-row gap-3">
+              <button 
+                onClick={async () => {
+                  // 1. Save locally
+                  localStorage.setItem(STORAGE_KEY, JSON.stringify(sections));
+                  
+                  // 2. Save to Firebase
+                  if (!isLocalDev && user && db && appId) {
+                    try {
+                      const safeDocId = getSafeDocId(editingModule);
+                      const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'modules', safeDocId);
+                      await setDoc(docRef, {
+                        displayName: editingModule,
+                        content: JSON.stringify(sections[editingModule]),
+                        updatedAt: Date.now()
+                      });
+                    } catch (err) {
+                      console.log("Cloud Save Error:", err.message);
+                    }
+                  }
+                  
+                  setView('menu');
+                  setEditingModule(null);
+                }} 
+                className="flex-1 py-5 bg-green-600 hover:bg-green-500 text-white rounded-2xl font-black uppercase shadow-xl transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+              >
+                <Save className="w-5 h-5" /> Save Changes
+              </button>
+              
+              <button 
+                onClick={() => { setView('menu'); setEditingModule(null); }} 
+                className="md:px-10 py-5 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl font-black uppercase transition-all active:scale-[0.98]"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         )}
@@ -566,6 +700,7 @@ export default function App() {
             </div>
           </div>
         )}
+
       </main>
     </div>
   );
