@@ -68,6 +68,7 @@ export default function App() {
   const [matchSelectedA, setMatchSelectedA] = useState({}); 
   const [matchTemp, setMatchTemp] = useState({}); 
   const [editingModule, setEditingModule] = useState(null);
+  const [plainText, setPlainText] = useState(''); 
 
   const questions = activeSection ? (sections[activeSection] || []) : [];
   const unsubscribeRef = useRef(null);
@@ -79,9 +80,9 @@ export default function App() {
       setProgress(0);
       interval = setInterval(() => {
         setProgress((prev) => {
-          if (prev < 30) return prev + 1; // Faster start
-          if (prev < 80) return prev + 0.3; // Slower mid-range
-          if (prev < 98) return prev + 0.05; // Very slow near end
+          if (prev < 30) return prev + 1;
+          if (prev < 80) return prev + 0.3;
+          if (prev < 98) return prev + 0.05;
           return prev;
         });
       }, 100);
@@ -157,7 +158,7 @@ export default function App() {
         });
       }
     }, (err) => {
-      console.log("Cloud sync access restricted (using local storage instead):", err.message);
+      console.log("Cloud sync restricted:", err.message);
     });
 
     return () => {
@@ -180,9 +181,7 @@ export default function App() {
 
       const data = await response.json();
       
-      if (data.error) {
-         throw new Error(data.error);
-      }
+      if (data.error) throw new Error(data.error);
 
       const rawResponseText = data.candidates[0].content.parts[0].text;
       const cleanJSON = JSON.parse(rawResponseText);
@@ -207,7 +206,6 @@ export default function App() {
         }
       }
 
-      // Smooth transition to Success state
       setIsProcessing(false);
       setIsSuccess(true);
       
@@ -221,14 +219,67 @@ export default function App() {
     } catch (error) {
       console.error("AI Parsing Failed:", error);
       setIsProcessing(false);
-      alert("The AI encountered an error formatting this text. Check the console for details: " + error.message);
+      alert("The AI encountered an error: " + error.message);
     }
+  };
+
+  const saveNotepadChanges = async () => {
+    const blocks = plainText.split('\n\n').filter(b => b.trim());
+    
+    const newQuestions = blocks.map(block => {
+      const lines = block.split('\n').map(l => l.trim());
+      const qLine = lines.find(l => l.toLowerCase().startsWith('question:')) || '';
+      const aLine = lines.find(l => l.toLowerCase().startsWith('answer:')) || '';
+      const oLine = lines.find(l => l.toLowerCase().startsWith('options:')) || '';
+      const matchingLines = lines.filter(l => l.includes('-->'));
+
+      const questionText = qLine.replace(/question:/i, '').trim();
+      const answerText = aLine.replace(/answer:/i, '').trim();
+
+      if (matchingLines.length > 0) {
+        return {
+          type: 'matching',
+          question: questionText,
+          colA: matchingLines.map((l, i) => ({ id: i + 1, text: l.split('-->')[0].trim() })),
+          colB: matchingLines.map((l, i) => ({ letter: String.fromCharCode(65 + i), text: l.split('-->')[1].trim() })),
+          correctMatches: matchingLines.reduce((acc, _, i) => ({ ...acc, [i]: i }), {})
+        };
+      }
+
+      if (oLine) {
+        const options = oLine.replace(/options:/i, '').split(',').map(o => o.trim());
+        return {
+          type: 'mcq',
+          question: questionText,
+          options: options,
+          correctAnswerIndex: options.findIndex(opt => opt.toLowerCase() === answerText.toLowerCase())
+        };
+      }
+
+      return { type: 'fib', question: questionText, answerText: answerText };
+    });
+
+    const updatedSections = { ...sections, [editingModule]: newQuestions };
+    setSections(updatedSections);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedSections));
+    
+    if (!isLocalDev && user && db && appId) {
+      try {
+        const safeDocId = getSafeDocId(editingModule);
+        await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'modules', safeDocId), {
+          displayName: editingModule,
+          content: JSON.stringify(newQuestions),
+          updatedAt: Date.now()
+        });
+      } catch (err) { console.log("Cloud Save Error:", err.message); }
+    }
+    setView('menu');
+    setEditingModule(null);
   };
 
   const handleDeleteConfirm = async () => {
     if (!showConfirm) return;
     const name = showConfirm;
-    
     const newSections = { ...sections };
     delete newSections[name];
     setSections(newSections);
@@ -316,8 +367,25 @@ export default function App() {
                 <h3 className="text-lg font-bold text-white mb-1 pr-16">{name}</h3>
                 <p className="text-xs text-slate-500 uppercase font-black tracking-widest">{sections[name].filter(q => q.type !== 'header').length} Questions</p>
                 <div className="absolute top-4 right-4 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={(e) => { e.stopPropagation(); setEditingModule(name); setView('edit'); window.scrollTo(0,0); }} className="text-slate-400 hover:text-blue-500 p-2 bg-slate-950 rounded-lg border border-slate-800 hover:border-blue-500/50 transition-all shadow-xl" title="Edit Module"><Pencil className="w-4 h-4" /></button>
-                    <button onClick={(e) => { e.stopPropagation(); setShowConfirm(name); }} className="text-slate-400 hover:text-red-500 p-2 bg-slate-950 rounded-lg border border-slate-800 hover:border-red-500/50 transition-all shadow-xl" title="Delete Module"><Trash2 className="w-4 h-4" /></button>
+                   <button onClick={(e) => { 
+                      e.stopPropagation(); 
+                      setEditingModule(name); 
+                      const textData = sections[name].map(q => {
+                        if (q.type === 'header') return `Question: ${q.text}\nAnswer: Header`;
+                        if (q.type === 'matching') {
+                          const pairs = q.colA.map((item, i) => `${item.text} --> ${q.colB[q.correctMatches[i] ?? q.correctMatches[String(i)]].text}`).join('\n');
+                          return `Question: ${q.question}\n${pairs}`;
+                        }
+                        if (q.type === 'mcq') return `Question: ${q.question}\nOptions: ${q.options.join(', ')}\nAnswer: ${q.options[q.correctAnswerIndex]}`;
+                        return `Question: ${q.question}\nAnswer: ${q.answerText}`;
+                      }).join('\n\n');
+                      setPlainText(textData);
+                      setView('edit'); 
+                      window.scrollTo(0,0);
+                  }} className="text-slate-400 hover:text-blue-500 p-2 bg-slate-950 rounded-lg border border-slate-800 hover:border-blue-500/50 transition-all shadow-xl" title="Edit Module">
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                  <button onClick={(e) => { e.stopPropagation(); setShowConfirm(name); }} className="text-slate-400 hover:text-red-500 p-2 bg-slate-950 rounded-lg border border-slate-800 hover:border-red-500/50 transition-all shadow-xl"><Trash2 className="w-4 h-4" /></button>
                 </div>
               </div>
             ))}
@@ -335,7 +403,7 @@ export default function App() {
               if (q.type === 'header') {
                 questionCounter = 0; 
                 return (
-                  <div key={idx} className="pt-10 pb-4 border-l-4 border-blue-600 pl-6 bg-slate-900/50 rounded-r-2xl shadow-lg border-y border-r border-slate-800">
+                  <div key={idx} className="pt-10 pb-4 border-l-4 border-l-blue-600 pl-6 bg-slate-900/50 rounded-r-2xl shadow-lg border-y border-r border-slate-800">
                     <div className="flex items-center gap-4">
                        <Layout className="text-blue-500 w-6 h-6" />
                        <h3 className="text-2xl font-black text-white tracking-tight uppercase italic">{q.text}</h3>
@@ -343,7 +411,6 @@ export default function App() {
                   </div>
                 );
               }
-
               questionCounter++;
               const isAns = answers[idx] !== undefined;
               const isRev = revealed[idx];
@@ -351,7 +418,6 @@ export default function App() {
 
               return (
                 <div key={idx} id={`q-card-${idx}`} className={`p-6 md:p-10 rounded-[2.5rem] bg-slate-900 border transition-all duration-500 shadow-2xl ${isAns ? (checkCorrect(q, userVal) ? 'border-green-500/30' : 'border-red-500/30') : 'border-slate-800'}`}>
-                  
                   <div className="mb-6 flex justify-between items-center">
                     <div className="bg-slate-800 text-blue-400 px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border border-slate-700">
                       Question {questionCounter}
@@ -363,7 +429,6 @@ export default function App() {
                       </span>
                     )}
                   </div>
-
                   <p className="text-xl md:text-2xl font-medium text-white mb-8 whitespace-pre-line leading-relaxed">{q.question}</p>
 
                   {(q.type === 'mcq' || q.type === 'tf') && (
@@ -373,14 +438,14 @@ export default function App() {
                         const isSelected = userVal === oIdx;
                         let style = "bg-slate-800 border-slate-700 hover:border-blue-500/50";
                         if (isAns || isRev) {
-                          if (isCorrectOpt) style = (q.type === 'tf' && !isSelected && isAns) ? "opacity-30 border-slate-800" : "bg-green-900/30 border-green-500 text-green-400 font-bold shadow-[0_0_20px_rgba(34,197,94,0.1)]";
+                          if (isCorrectOpt) style = "bg-green-900/30 border-green-500 text-green-400 font-bold";
                           else if (isAns && isSelected) style = "bg-red-900/30 border-red-500 text-red-400 font-bold";
                           else style = "opacity-30 border-slate-800";
                         }
                         return (
                           <button key={oIdx} disabled={isAns} onClick={() => { setAnswers({...answers, [idx]: oIdx}); if(!isAns) setTimeout(() => scrollToNext(idx), 600); }} className={`w-full text-left p-5 rounded-2xl border transition-all flex justify-between items-center group ${style}`}>
                             <span>{opt}</span>
-                            {(isAns || isRev) && isCorrectOpt && (q.type === 'mcq' || isSelected || isRev) && <CircleCheck className="w-5 h-5 text-green-400" />}
+                            {(isAns || isRev) && isCorrectOpt && <CircleCheck className="w-5 h-5 text-green-400" />}
                             {isAns && isSelected && !isCorrectOpt && <CircleX className="w-5 h-5 text-red-400" />}
                           </button>
                         );
@@ -398,25 +463,8 @@ export default function App() {
                               <button key={aIdx} onClick={() => !isAns && setMatchSelectedA({...matchSelectedA, [idx]: matchSelectedA[idx] === aIdx ? null : aIdx})} className={`p-4 text-left border-b border-slate-800 min-h-[80px] flex items-center justify-between transition-colors ${matchSelectedA[idx] === aIdx ? 'bg-blue-600/20' : 'hover:bg-slate-800/30'}`}>
                                 <span className="text-sm font-medium">{item.id}. {item.text}</span>
                                 {match !== undefined && (
-                                  <div className="flex items-center gap-1 sm:gap-2">
-                                    <span className="bg-blue-500 text-[10px] font-black px-2 py-0.5 rounded shadow-lg">{q.colB[match]?.letter}</span>
-                                    {!isAns && (
-                                      <div 
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          const updated = { ...(matchTemp[idx] || {}) };
-                                          delete updated[aIdx];
-                                          setMatchTemp({...matchTemp, [idx]: updated});
-                                          if (matchSelectedA[idx] === aIdx) {
-                                              setMatchSelectedA({...matchSelectedA, [idx]: null});
-                                          }
-                                        }} 
-                                        className="p-1 hover:bg-red-500/20 text-slate-400 hover:text-red-400 rounded-full transition-colors"
-                                        title="Remove this match"
-                                      >
-                                        <X className="w-3 h-3" />
-                                      </div>
-                                    )}
+                                  <div className="flex items-center gap-1">
+                                    <span className="bg-blue-500 text-[10px] font-black px-2 py-0.5 rounded">{q.colB[match]?.letter}</span>
                                   </div>
                                 )}
                               </button>
@@ -431,7 +479,6 @@ export default function App() {
                                 if (isAns || matchSelectedA[idx] === null || matchSelectedA[idx] === undefined) return;
                                 const currentA = matchSelectedA[idx];
                                 const updated = { ...(matchTemp[idx] || {}) };
-                                Object.keys(updated).forEach(k => { if(updated[k] === bIdx) delete updated[k]; });
                                 updated[currentA] = bIdx;
                                 setMatchTemp({...matchTemp, [idx]: updated});
                                 setMatchSelectedA({...matchSelectedA, [idx]: null});
@@ -444,244 +491,119 @@ export default function App() {
                         </div>
                       </div>
                       {!isAns && (
-                        <div className="flex flex-col sm:flex-row gap-2 w-full mt-4">
-                          <button onClick={() => { setAnswers({...answers, [idx]: matchTemp[idx]}); setTimeout(() => scrollToNext(idx), 600); }} className="flex-1 py-5 bg-blue-600 hover:bg-blue-500 rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl shadow-blue-600/20 flex items-center justify-center gap-2 transition-all"><ClipboardCheck className="w-4 h-4" /> Submit Match Set</button>
-                          <button onClick={() => { setMatchTemp({...matchTemp, [idx]: {}}); setMatchSelectedA({...matchSelectedA, [idx]: null}); }} className="px-6 py-5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-2xl font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2 transition-all" title="Clear all matches"><RotateCcw className="w-4 h-4" /> Clear All</button>
-                        </div>
+                        <button onClick={() => { setAnswers({...answers, [idx]: matchTemp[idx]}); setTimeout(() => scrollToNext(idx), 600); }} className="w-full py-5 bg-blue-600 hover:bg-blue-500 rounded-2xl font-black uppercase text-xs flex items-center justify-center gap-2 transition-all shadow-xl"><ClipboardCheck className="w-4 h-4" /> Submit Match Set</button>
                       )}
                     </div>
                   )}
 
                   {q.type === 'fib' && (
                     <div className="space-y-4">
-                      <form onSubmit={(e) => { e.preventDefault(); const val = (fibInput[idx] || "").trim(); if(val){ setAnswers({...answers, [idx]: val}); setTimeout(()=>scrollToNext(idx), 600); } else setRevealed({...revealed, [idx]: !isRev}); }}>
-                        <input id={`fib-inp-${idx}`} type="text" disabled={isAns} value={fibInput[idx] || ""} onChange={(e)=>setFibInput({...fibInput, [idx]: e.target.value})} placeholder="Type answer and press Enter..." className={`w-full p-6 bg-slate-950 rounded-2xl border-2 outline-none transition-all text-xl font-bold ${isAns ? (checkCorrect(q, userVal) ? 'border-green-500 text-green-400 shadow-[0_0_15px_rgba(34,197,94,0.1)]' : 'border-red-500 text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.1)]') : (isRev ? 'border-blue-500 shadow-blue-500/10' : 'border-slate-800 focus:border-blue-500')}`} />
+                      <form onSubmit={(e) => { e.preventDefault(); const val = (fibInput[idx] || "").trim(); if(val){ setAnswers({...answers, [idx]: val}); setTimeout(()=>scrollToNext(idx), 600); } }}>
+                        <input id={`fib-inp-${idx}`} type="text" disabled={isAns} value={fibInput[idx] || ""} onChange={(e)=>setFibInput({...fibInput, [idx]: e.target.value})} placeholder="Type answer and press Enter..." className="w-full p-6 bg-slate-950 rounded-2xl border-2 border-slate-800 focus:border-blue-500 outline-none text-xl font-bold transition-all" />
                       </form>
                     </div>
                   )}
 
-                  {/* UNIVERSAL OFFICIAL ANSWER BLOCK */}
                   {(isAns || isRev) && (q.type === 'fib' || q.type === 'matching') && (
-                    <div className="p-5 mt-6 bg-slate-800/50 rounded-2xl border border-slate-700 flex items-start gap-3 animate-in slide-in-from-top-2">
-                      <Eye className="text-blue-400 w-5 h-5 shrink-0 mt-0.5" />
-                      <div className="w-full">
-                        <div className="flex justify-between items-center mb-4">
-                           <p className="text-[10px] font-black uppercase text-slate-500 tracking-tighter">Official Answer Key</p>
-                           {q.type === 'matching' && isAns && (
-                              <button onClick={() => {
-                                 const newAns = {...answers}; delete newAns[idx]; setAnswers(newAns);
-                                 const newTemp = {...matchTemp}; delete newTemp[idx]; setMatchTemp(newTemp);
-                                 setRevealed({...revealed, [idx]: false});
-                                 setMatchSelectedA({...matchSelectedA, [idx]: null});
-                              }} className="text-[10px] text-blue-400 hover:text-blue-300 font-bold uppercase flex items-center gap-1 transition-colors"><RotateCcw className="w-3 h-3" /> Retry Match</button>
-                           )}
+                    <div className="p-5 mt-6 bg-slate-800/50 rounded-2xl border border-slate-700">
+                      <div className="flex items-start gap-3">
+                        <Eye className="text-blue-400 w-5 h-5 shrink-0" />
+                        <div>
+                          <p className="text-[10px] font-black uppercase text-slate-500 mb-2">Answer Key</p>
+                          {q.type === 'matching' ? (
+                            <div className="space-y-1">
+                              {q.colA.map((item, aIdx) => (
+                                <p key={aIdx} className="text-sm text-white">{item.text} → {q.colB[q.correctMatches[aIdx] ?? q.correctMatches[String(aIdx)]]?.text}</p>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-lg text-white">{q.answerText}</span>
+                          )}
                         </div>
-                        {q.type === 'matching' ? (
-                          <div className="space-y-2">
-                            {q.colA.map((item, aIdx) => {
-                              const correctBIdx = q.correctMatches[aIdx] ?? q.correctMatches[String(aIdx)];
-                              const correctB = q.colB[correctBIdx];
-                              const isUserCorrect = isAns && userVal && userVal[aIdx] === correctBIdx;
-                              return (
-                                <div key={aIdx} className={`flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-sm p-3 rounded-xl border ${isAns ? (isUserCorrect ? 'bg-green-900/20 border-green-500/30' : 'bg-red-900/20 border-red-500/30') : 'bg-slate-900/50 border-slate-800'}`}>
-                                  <div className="flex items-center gap-2 flex-1">
-                                     {isAns && (isUserCorrect ? <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" /> : <X className="w-4 h-4 text-red-500 shrink-0" />)}
-                                     <span className="text-white font-medium"><span className="text-slate-500 mr-2">{item.id}.</span>{item.text}</span>
-                                  </div>
-                                  <ArrowRightLeft className="w-4 h-4 text-blue-500 shrink-0 hidden sm:block opacity-50" />
-                                  <div className="flex items-center gap-2 flex-1 pl-6 sm:pl-0">
-                                     <span className="text-blue-400 font-black shrink-0">{correctB?.letter})</span>
-                                     <span className="text-slate-300">{correctB?.text}</span>
-                                  </div>
-                                </div>
-                              )
-                            })}
-                          </div>
-                        ) : (
-                          <span className="font-mono text-lg text-white break-all">{q.answerText}</span>
-                        )}
                       </div>
-                    </div>
-                  )}
-                  
-                  {!isAns && (
-                    <div className="mt-4 flex justify-end">
-                      <button onClick={() => setRevealed({...revealed, [idx]: !isRev})} className="text-[10px] font-bold text-slate-600 hover:text-blue-400 flex items-center gap-1 uppercase tracking-widest transition-colors">
-                        <Eye className="w-3 h-3"/> {isRev ? 'Hide Answer' : 'Show Answer'}
-                      </button>
                     </div>
                   )}
                 </div>
               );
             })}
-            <div className="flex justify-center pt-20">
-              <button onClick={() => setView('results')} className="px-16 py-6 bg-blue-600 hover:bg-blue-500 text-white rounded-full font-black uppercase shadow-2xl transition-all hover:scale-105 active:scale-95 flex items-center gap-3">
-                Finish Exam <Trophy className="w-6 h-6 text-yellow-400" />
-              </button>
+            <div className="flex justify-center pt-10">
+              <button onClick={() => setView('results')} className="px-16 py-6 bg-blue-600 hover:bg-blue-500 text-white rounded-full font-black uppercase shadow-2xl transition-all flex items-center gap-3">Finish <Trophy className="w-6 h-6 text-yellow-400" /></button>
             </div>
           </div>
         )}
 
         {/* VIEW: RESULTS */}
         {view === 'results' && (
-          <div className="bg-slate-900 p-10 md:p-20 rounded-[3rem] text-center border border-slate-800 shadow-2xl animate-in zoom-in">
-            <Trophy className="w-20 h-20 text-yellow-500 mx-auto mb-6 drop-shadow-[0_0_20px_rgba(234,179,8,0.3)]" />
-            <h2 className="text-4xl font-black text-white mb-8 tracking-tight italic uppercase leading-none">Module Complete</h2>
-            <div className="grid grid-cols-2 gap-4 mb-10">
-              <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 shadow-inner">
-                <p className="text-[10px] font-black text-slate-500 mb-2 uppercase tracking-widest">Final Score</p>
-                <p className="text-5xl font-black text-white">{calculateScore()} <span className="text-lg text-slate-800">/ {totalQuestions}</span></p>
+          <div className="bg-slate-900 p-10 rounded-[3rem] text-center border border-slate-800 shadow-2xl">
+            <Trophy className="w-20 h-20 text-yellow-500 mx-auto mb-6" />
+            <h2 className="text-4xl font-black text-white mb-8 uppercase italic">Complete</h2>
+            <div className="grid grid-cols-2 gap-4 mb-10 text-center">
+              <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800">
+                <p className="text-[10px] font-black text-slate-500 uppercase">Score</p>
+                <p className="text-5xl font-black text-white">{calculateScore()} / {totalQuestions}</p>
               </div>
-              <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 shadow-inner">
-                <p className="text-[10px] font-black text-slate-500 mb-2 uppercase tracking-widest">Accuracy</p>
+              <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800">
+                <p className="text-[10px] font-black text-slate-500 uppercase">Accuracy</p>
                 <p className="text-5xl font-black text-blue-500">{totalQuestions > 0 ? Math.round((calculateScore()/totalQuestions)*100) : 0}%</p>
               </div>
             </div>
-            <button onClick={() => setView('menu')} className="w-full py-5 bg-blue-600 hover:bg-blue-500 rounded-2xl font-black uppercase tracking-widest shadow-xl transition-all active:scale-95">Modules Home</button>
+            <button onClick={() => setView('menu')} className="w-full py-5 bg-blue-600 hover:bg-blue-500 rounded-2xl font-black uppercase transition-all">Home</button>
           </div>
         )}
 
         {/* VIEW: IMPORT */}
         {view === 'import' && (
-          <div className="bg-slate-900 p-8 rounded-[2.5rem] border border-slate-800 shadow-2xl animate-in slide-in-from-bottom duration-500">
-            <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
-              <div className="flex items-center gap-3">
-                <div className="p-3 bg-blue-500/10 rounded-2xl"><Wand2 className="text-blue-500 w-6 h-6" /></div>
-                <div>
-                  <h2 className="text-2xl font-black text-white uppercase italic leading-none mb-1">Text Import</h2>
-                  <p className="text-slate-500 text-[10px] font-bold tracking-tight italic flex items-center gap-1">
-                    <ShieldCheck className="w-3 h-3 text-green-400" />
-                    POWERED BY Yadanar
-                  </p>
-                </div>
-              </div>
+          <div className="bg-slate-900 p-8 rounded-[2.5rem] border border-slate-800 shadow-2xl">
+            <div className="flex items-center gap-3 mb-6">
+              <Wand2 className="text-blue-500 w-6 h-6" />
+              <h2 className="text-2xl font-black text-white uppercase italic">Import</h2>
             </div>
+            <input type="text" value={moduleName} onChange={(e)=>setModuleName(e.target.value)} placeholder="Module Name..." className="w-full p-5 bg-slate-950 rounded-2xl border border-slate-800 mb-4 font-bold outline-none focus:border-blue-500 transition-all text-white" />
+            <textarea value={rawInput} onChange={(e)=>setRawInput(e.target.value)} placeholder="Paste text here..." className="w-full h-80 p-6 bg-slate-950 rounded-3xl border border-slate-800 font-mono text-xs mb-6 outline-none focus:border-blue-500 transition-all text-slate-300" />
             
-            <div className="mb-4 bg-blue-500/5 border border-blue-500/20 p-4 rounded-2xl flex gap-3 items-start">
-               <FileSearch className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
-               <p className="text-[11px] text-slate-400 leading-relaxed">
-                  <strong className="text-blue-400">AI Parser Active:</strong> Paste your raw, unformatted PDF or Word document text below. The AI will automatically structure the questions, detect answer keys, and build your interactive module, parsing gonna take 1 to 2 minutes.
-               </p>
-            </div>
-
-            <input type="text" value={moduleName} onChange={(e)=>setModuleName(e.target.value)} placeholder="Enter Module Name (e.g. MEO Class 3 Boiler)" className="w-full p-5 bg-slate-950 rounded-2xl border border-slate-800 mb-4 font-bold outline-none focus:border-blue-500 transition-all placeholder:text-slate-800 text-white" />
-            <textarea value={rawInput} onChange={(e)=>setRawInput(e.target.value)} placeholder="Paste raw text here..." className="w-full h-80 p-6 bg-slate-950 rounded-3xl border border-slate-800 font-mono text-xs mb-6 outline-none focus:border-blue-500 transition-all leading-relaxed placeholder:text-slate-800 text-slate-300" />
-            
-            {/* --- LOADING PROGRESS BAR --- */}
-            {(isProcessing || isSuccess) && (
-              <div className="w-full mb-6 animate-in fade-in duration-500">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest animate-pulse">
-                    {isSuccess ? 'Processing Complete!' : 'AI Analysis in Progress...'}
-                  </span>
-                  <span className="text-[10px] font-black text-slate-500 uppercase">
-                    {Math.round(progress)}%
-                  </span>
+            {isProcessing && (
+              <div className="w-full mb-6">
+                <div className="flex justify-between text-[10px] font-black text-blue-500 uppercase mb-2">
+                  <span>AI Parsing...</span>
+                  <span>{Math.round(progress)}%</span>
                 </div>
-                <div className="h-1.5 w-full bg-slate-950 rounded-full overflow-hidden border border-slate-800 shadow-inner">
-                  <div 
-                    className={`h-full shadow-[0_0_15px_rgba(59,130,246,0.5)] transition-all duration-500 ease-out ${isSuccess ? 'bg-green-500' : 'bg-blue-500'}`}
-                    style={{ width: `${progress}%` }}
-                  />
+                <div className="h-1.5 bg-slate-950 rounded-full border border-slate-800 overflow-hidden">
+                  <div className="h-full bg-blue-500 transition-all" style={{ width: `${progress}%` }} />
                 </div>
               </div>
             )}
 
-            <div className="flex flex-col md:flex-row gap-3">
-              <button 
-                onClick={handleAI_Import} 
-                disabled={isProcessing || isSuccess || !rawInput}
-                className={`flex-1 py-5 text-white rounded-2xl font-black uppercase shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] flex items-center justify-center gap-3 ${isSuccess ? 'bg-green-600 hover:bg-green-500' : 'bg-blue-600 hover:bg-blue-500'}`}
-              >
-                {isProcessing ? (
-                  <>
-                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    AI is Parsing...
-                  </>
-                ) : isSuccess ? (
-                  <>
-                    <CheckCircle2 className="w-6 h-6 text-white" />
-                    Module Created!
-                  </>
-                ) : (
-                  <>Generate Module</>
-                )}
+            <div className="flex gap-3">
+              <button onClick={handleAI_Import} disabled={isProcessing || !rawInput} className="flex-1 py-5 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-black uppercase shadow-xl disabled:opacity-50 flex items-center justify-center gap-3">
+                {isProcessing ? "Processing..." : isSuccess ? "Success!" : "Generate Module"}
               </button>
-              <button onClick={() => setView('menu')} className="md:px-10 py-5 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl font-black uppercase transition-all active:scale-[0.98]">Cancel</button>
+              <button onClick={() => setView('menu')} className="px-10 py-5 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl font-black uppercase">Cancel</button>
             </div>
           </div>
         )}
 
-        {/* VIEW: EDIT MODULE */}
+        {/* VIEW: EDIT MODULE (NOTEPAD MODE) */}
         {view === 'edit' && editingModule && (
           <div className="bg-slate-900 p-6 md:p-10 rounded-[2.5rem] border border-slate-800 shadow-2xl animate-in slide-in-from-bottom duration-500">
-            <div className="flex items-center gap-3 mb-8 border-b border-slate-800 pb-6">
-              <div className="p-3 bg-blue-500/10 rounded-2xl"><Pencil className="text-blue-500 w-6 h-6" /></div>
-              <h2 className="text-2xl font-black text-white uppercase italic leading-none">Edit Module: <span className="text-blue-500">{editingModule}</span></h2>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-black text-white uppercase italic">Notepad Editor</h2>
+              <div className="hidden md:block text-[9px] font-bold text-slate-500 uppercase tracking-widest bg-slate-950 px-4 py-2 rounded-xl border border-slate-800">
+                {'Format: Question: → Answer: / Options: / -->'}
+              </div>
             </div>
 
-            <div className="space-y-4 mb-8">
-              {sections[editingModule].map((q, idx) => (
-                <div key={idx} className="p-4 bg-slate-950 rounded-2xl border border-slate-800 focus-within:border-blue-500 transition-colors">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                      {q.type === 'header' ? 'Section Header' : `Question ${idx + 1} (${q.type})`}
-                    </span>
-                  </div>
-                  
-                  {/* Editable Text Area for the Question/Header */}
-                  <textarea
-                    value={q.type === 'header' ? q.text : q.question}
-                    onChange={(e) => {
-                      const updatedSections = { ...sections };
-                      if (q.type === 'header') {
-                        updatedSections[editingModule][idx].text = e.target.value;
-                      } else {
-                        updatedSections[editingModule][idx].question = e.target.value;
-                      }
-                      setSections(updatedSections);
-                    }}
-                    className="w-full bg-slate-900 text-white p-4 rounded-xl border border-slate-700 outline-none focus:border-blue-500 font-medium leading-relaxed resize-none min-h-[80px]"
-                  />
-                </div>
-              ))}
-            </div>
+            <textarea
+              value={plainText}
+              onChange={(e) => setPlainText(e.target.value)}
+              className="w-full h-[500px] bg-slate-950 text-white p-8 rounded-[2rem] border border-slate-800 font-medium text-lg mb-8 outline-none focus:border-blue-500 transition-all leading-relaxed resize-none"
+              placeholder="Question: What is 2+2?&#10;Answer: 4"
+            />
 
-            <div className="flex flex-col md:flex-row gap-3">
-              <button 
-                onClick={async () => {
-                  // 1. Save locally
-                  localStorage.setItem(STORAGE_KEY, JSON.stringify(sections));
-                  
-                  // 2. Save to Firebase
-                  if (!isLocalDev && user && db && appId) {
-                    try {
-                      const safeDocId = getSafeDocId(editingModule);
-                      const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'modules', safeDocId);
-                      await setDoc(docRef, {
-                        displayName: editingModule,
-                        content: JSON.stringify(sections[editingModule]),
-                        updatedAt: Date.now()
-                      });
-                    } catch (err) {
-                      console.log("Cloud Save Error:", err.message);
-                    }
-                  }
-                  
-                  setView('menu');
-                  setEditingModule(null);
-                }} 
-                className="flex-1 py-5 bg-green-600 hover:bg-green-500 text-white rounded-2xl font-black uppercase shadow-xl transition-all active:scale-[0.98] flex items-center justify-center gap-2"
-              >
-                <Save className="w-5 h-5" /> Save Changes
+            <div className="flex gap-3">
+              <button onClick={saveNotepadChanges} className="flex-1 py-5 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-black uppercase shadow-xl transition-all active:scale-[0.98] flex items-center justify-center gap-2">
+                <Save className="w-5 h-5" /> Save All Changes
               </button>
-              
-              <button 
-                onClick={() => { setView('menu'); setEditingModule(null); }} 
-                className="md:px-10 py-5 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl font-black uppercase transition-all active:scale-[0.98]"
-              >
-                Cancel
-              </button>
+              <button onClick={() => { setView('menu'); setEditingModule(null); }} className="md:px-10 py-5 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl font-black uppercase transition-all">Cancel</button>
             </div>
           </div>
         )}
