@@ -45,131 +45,6 @@ const STORAGE_KEY = 'meo_prep_pro_v17_stable';
 
 const getSafeDocId = (str) => encodeURIComponent(str).replace(/[%.\/]/g, '_') || 'unnamed_module';
 
-// --- THE SMART PARSER ENGINE ---
-const parseRawText = (text) => {
-  if (!text) return [];
-  const lines = text.split('\n').map(l => l.trim()).filter(l => l);
-  const questions = [];
-  let currentQ = null;
-  let inMatchingKey = false;
-  let currentColumn = null;
-  let colACounter = 1;
-  let activeTarget = 'question';
-
-  for (let i = 0; i < lines.length; i++) {
-    let line = lines[i];
-
-    if (line.startsWith('###')) {
-      if (currentQ) questions.push(currentQ);
-      questions.push({ type: 'header', text: line.replace(/^###\s*/, '') });
-      currentQ = null;
-      inMatchingKey = false;
-      currentColumn = null;
-      continue;
-    }
-
-    if (currentQ && currentQ.type === 'matching') {
-      if (line.toLowerCase().startsWith('answer key:')) {
-        inMatchingKey = true;
-        currentColumn = null;
-        continue;
-      }
-      
-      if (line.toLowerCase().includes('column a:')) {
-        currentColumn = 'A';
-        continue;
-      }
-      if (line.toLowerCase().includes('column b:')) {
-        currentColumn = 'B';
-        continue;
-      }
-      
-      if (inMatchingKey) {
-        const keyMatch = line.match(/(.*?)\s*[-:]\s*([A-E])(?:\s|$|:)/i);
-        if (keyMatch) {
-          const leftPart = keyMatch[1].trim().toLowerCase();
-          const letter = keyMatch[2].toUpperCase();
-          
-          let aIdx = currentQ.colA.findIndex(item => leftPart.startsWith(item.id) || item.id === leftPart);
-          if (aIdx === -1) aIdx = currentQ.colA.findIndex(item => item.text.toLowerCase().includes(leftPart) || leftPart.includes(item.text.toLowerCase()));
-          const bIdx = currentQ.colB.findIndex(item => item.letter === letter);
-          
-          if (aIdx !== -1 && bIdx !== -1) currentQ.correctMatches[aIdx] = bIdx;
-          continue; 
-        }
-      } else {
-        const aMatch = line.match(/^(\d+)[\.\)]\s*(.*)/);
-        const bMatch = line.match(/^([A-E])[\)\.]\s*(.*)/i);
-        
-        if (aMatch && !line.toLowerCase().includes('match the items')) {
-          currentQ.colA.push({ id: aMatch[1], text: aMatch[2] });
-          colACounter = parseInt(aMatch[1], 10) + 1;
-          continue; 
-        } else if (bMatch) {
-          currentQ.colB.push({ letter: bMatch[1].toUpperCase(), text: bMatch[2] });
-          continue;
-        } else if (currentColumn === 'A' && line.trim()) {
-          currentQ.colA.push({ id: String(colACounter), text: line });
-          colACounter++;
-          continue;
-        }
-      }
-    }
-
-    const qMatch = line.match(/^(\d+)[\.\)]\s*(.*)/);
-    if (qMatch) {
-      if (currentQ) questions.push(currentQ);
-      const questionText = qMatch[2];
-      
-      if (questionText.toLowerCase().includes('match the items')) {
-        currentQ = { id: qMatch[1], question: questionText, type: 'matching', colA: [], colB: [], correctMatches: {}, answerText: 'Matching', options: [] };
-        colACounter = 1;
-      } else {
-        currentQ = { id: qMatch[1], question: questionText, type: 'fib', options: [], answerText: '' };
-      }
-      inMatchingKey = false;
-      currentColumn = null;
-      activeTarget = 'question';
-      continue;
-    }
-
-    if (!currentQ) continue;
-
-    const optMatch = line.match(/^([A-E])[\)\.]\s*(.*)/i);
-    if (optMatch && currentQ.type !== 'matching') {
-      currentQ.type = 'mcq';
-      currentQ.options.push(line);
-      activeTarget = 'option';
-      continue;
-    }
-
-    const ansMatch = line.match(/^(?:Answer|Ans|Correct|Result)\s*[:\-]\s*(.*)/i);
-    if (ansMatch) {
-      const val = ansMatch[1].trim();
-      currentQ.answerText = val;
-      if (currentQ.type === 'mcq') {
-        const letter = val.charAt(0).toUpperCase();
-        const idx = currentQ.options.findIndex(o => o.toUpperCase().startsWith(letter));
-        if (idx !== -1) currentQ.correctAnswerIndex = idx;
-      } else if (/^(true|false)$/i.test(val)) {
-        currentQ.type = 'tf';
-        currentQ.options = ["True", "False"];
-        currentQ.correctAnswerIndex = val.toLowerCase() === 'true' ? 0 : 1;
-      }
-      activeTarget = 'answer';
-      continue;
-    }
-
-    if (activeTarget === 'question') currentQ.question += ' ' + line;
-    else if (activeTarget === 'option' && currentQ.options.length > 0) {
-      currentQ.options[currentQ.options.length - 1] += ' ' + line;
-    }
-  }
-
-  if (currentQ) questions.push(currentQ);
-  return questions;
-};
-
 export default function App() {
   const [user, setUser] = useState(null);
   const [sections, setSections] = useState({});
@@ -179,6 +54,7 @@ export default function App() {
   const [moduleName, setModuleName] = useState('');
   const [showConfirm, setShowConfirm] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isProcessing, setIsProcessing] = useState(false); // <--- New state for AI loading
   
   const [answers, setAnswers] = useState({}); 
   const [fibInput, setFibInput] = useState({}); 
@@ -261,152 +137,60 @@ export default function App() {
     };
   }, [user]);
 
-  const handleAutoClean = () => {
+  // --- 3. THE NEW GEMINI AI IMPORT ENGINE ---
+  const handleAI_Import = async () => {
     if (!rawInput) return;
-    let text = rawInput;
+    setIsProcessing(true);
 
-    // --- AGGRESSIVE DE-SQUISHER FOR PDFs ---
-    text = text.replace(/(Column A\s*:)/gi, "\n$1\n");
-    text = text.replace(/(Column B\s*:)/gi, "\n$1\n");
-    text = text.replace(/(Answer Key\s*:)/gi, "\n$1\n");
+    try {
+      // Talk to your Vercel Backend instead of Google!
+      const response = await fetch('/api/parse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rawInput })
+      });
 
-    text = text.replace(/\s+([A-E]\))\s*/g, "\n$1 ");
-    text = text.replace(/^([A-E]\))\s*/gm, "$1 "); 
-
-    text = text.replace(/\s+(\d+[\.\)])\s*([a-zA-Z])/g, "\n$1 $2");
-    text = text.replace(/^(\d+[\.\)])\s*([a-zA-Z])/gm, "$1 $2"); 
-
-    text = text.replace(/Page\s+\d+\s+of\s+\d+/gi, "");
-    text = text.replace(/^\d+\s+\/\s+\d+$/gm, "");
-    text = text.replace(/MEO Class III.*Question bank/gi, "");
-
-    text = text.replace(/([^\n])\s+(Answer\s*[:\-]\s*)/gim, "$1\n$2");
-    text = text.replace(/^(?:\w+\.\s+)?(?:Ans|Correct|Result)\s*[:\-]/gim, "Answer:");
-    text = text.replace(/^[a-z•\-\*][\.\)]?\s*Answer\s*[:\-]/gim, "Answer:");
-    text = text.replace(/^Answer:\s*(T|F)$/gim, (m, p1) => `Answer: ${p1 === 'T' ? 'True' : 'False'}`);
-    
-    let lines = text.split('\n').map(l => l.trim()).filter(l => l);
-    let numberedOutput = [];
-    let qIdx = 1;
-    let inMatching = false;
-    let inMatchingKey = false;
-    let currentColumn = null;
-    let colACounter = 1;
-
-    for (let i = 0; i < lines.length; i++) {
-      let line = lines[i];
+      const data = await response.json();
       
-      if (line.startsWith('###')) {
-         numberedOutput.push("\n" + line);
-         qIdx = 1;
-         inMatching = false;
-         inMatchingKey = false;
-         currentColumn = null;
-         continue;
+      if (data.error) {
+         throw new Error(data.error);
       }
 
-      if (line.toLowerCase().includes('match the items')) {
-         inMatching = true;
-         inMatchingKey = false;
-         currentColumn = null;
-         colACounter = 1;
-         line = line.replace(/^(\d+[\.\)]\s*)+/, ''); 
-         numberedOutput.push(`\n${qIdx}. ${line}`);
-         qIdx++;
-         continue;
-      }
-
-      if (inMatching) {
-         if (line.toLowerCase().startsWith('column a')) {
-            currentColumn = 'A';
-            numberedOutput.push(line);
-            continue;
-         }
-         if (line.toLowerCase().startsWith('column b')) {
-            currentColumn = 'B';
-            numberedOutput.push(line);
-            continue;
-         }
-         if (line.toLowerCase().includes('answer key:')) {
-            inMatchingKey = true;
-            currentColumn = null;
-            numberedOutput.push(line);
-            continue;
-         }
-         
-         if (/^Answer\s*[:\-]/i.test(line)) {
-            inMatching = false;
-         } else if (inMatchingKey) {
-            if (!line.match(/(.*?)\s*[-:]\s*([A-E])(?:\s|$|:)/i) && line.match(/^(\d+)[\.\)]\s*(.*)/)) {
-               inMatching = false; 
-            } else {
-               numberedOutput.push(line);
-               continue;
-            }
-         } else {
-            if (currentColumn === 'A') {
-               const aMatch = line.match(/^(\d+)[\.\)]\s*(.*)/);
-               if (aMatch) {
-                   numberedOutput.push(`${aMatch[1]}. ${aMatch[2]}`);
-                   colACounter = parseInt(aMatch[1], 10) + 1;
-               } else {
-                   numberedOutput.push(`${colACounter}. ${line}`);
-                   colACounter++;
-               }
-               continue;
-            }
-            numberedOutput.push(line);
-            continue;
-         }
-      }
-
-      const isOption = /^[A-E][\)\.]/i.test(line);
-      const isAnswer = /^Answer\s*[:\-]/i.test(line);
-      const isPotentialHeader = !isOption && !isAnswer && line.length > 2 && line.length < 50 && !line.includes('_') && !line.includes('.') && !line.includes('?') && !line.includes(':');
-
-      if (isPotentialHeader) {
-          numberedOutput.push("\n### " + line);
-          qIdx = 1;
-          continue;
-      }
-
-      if (!isOption && !isAnswer) {
-        line = line.replace(/^(\d+[\.\)]\s*)+/, '');
-        numberedOutput.push(`\n${qIdx}. ${line}`);
-        qIdx++;
-      } else {
-        numberedOutput.push(line);
-      }
-    }
-    setRawInput(numberedOutput.join('\n').trim());
-  };
-
-  const handleImport = async () => {
-    const name = moduleName.trim() || `Module ${Object.keys(sections).length + 1}`;
-    const parsed = parseRawText(rawInput);
-    
-    if (parsed.length > 0) {
-      const newSections = { ...sections, [name]: parsed };
+      // Parse the JSON exactly like before
+      const rawResponseText = data.candidates[0].content.parts[0].text;
+      const cleanJSON = JSON.parse(rawResponseText);
+      
+      const name = moduleName.trim() || `Module ${Object.keys(sections).length + 1}`;
+      const newSections = { ...sections, [name]: cleanJSON };
+      
+      // Save locally
       setSections(newSections);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(newSections));
       
-      setRawInput(''); setModuleName(''); setView('menu');
-
+      // Save to Firebase (if connected)
       if (!isLocalDev && user && db && appId) {
         try {
           const safeDocId = getSafeDocId(name);
           const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'modules', safeDocId);
           await setDoc(docRef, {
             displayName: name,
-            content: JSON.stringify(parsed),
+            content: JSON.stringify(cleanJSON),
             updatedAt: Date.now()
           });
         } catch (err) {
           console.log("Background Cloud Save Restricted:", err.message);
         }
       }
-    } else {
-      alert("No questions detected. Please ensure you clicked 'Auto-Clean Format' first.");
+
+      setRawInput(''); 
+      setModuleName(''); 
+      setView('menu');
+
+    } catch (error) {
+      console.error("AI Parsing Failed:", error);
+      alert("The AI encountered an error formatting this text. Check the console for details: " + error.message);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -433,7 +217,7 @@ export default function App() {
   const checkCorrect = (q, val) => {
     if (!q || val === undefined || q.type === 'header') return false;
     if (q.type === 'mcq' || q.type === 'tf') return val === q.correctAnswerIndex;
-    if (q.type === 'fib') return val?.toLowerCase().trim() === q.answerText?.toLowerCase().trim();
+    if (q.type === 'fib') return val?.trim() === q.answerText?.trim();
     if (q.type === 'matching') {
         if (!val || Object.keys(val).length === 0) return false;
         return q.colA.every((_, aIdx) => val[aIdx] === q.correctMatches[aIdx] || val[aIdx] === q.correctMatches[String(aIdx)]);
@@ -727,32 +511,42 @@ export default function App() {
           <div className="bg-slate-900 p-8 rounded-[2.5rem] border border-slate-800 shadow-2xl animate-in slide-in-from-bottom duration-500">
             <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
               <div className="flex items-center gap-3">
-                <div className="p-3 bg-blue-500/10 rounded-2xl"><Upload className="text-blue-500" /></div>
+                <div className="p-3 bg-blue-500/10 rounded-2xl"><Wand2 className="text-blue-500 w-6 h-6" /></div>
                 <div>
-                  <h2 className="text-2xl font-black text-white uppercase italic leading-none mb-1">Import Module</h2>
+                  <h2 className="text-2xl font-black text-white uppercase italic leading-none mb-1">AI Import</h2>
                   <p className="text-slate-500 text-[10px] font-bold tracking-tight italic flex items-center gap-1">
-                    {isLocalDev ? <HardDrive className="w-3 h-3 text-blue-400" /> : <ShieldCheck className="w-3 h-3 text-green-400" />}
-                    {isLocalDev ? "LOCAL STORAGE MODE" : "CLOUD SYNC ACTIVE"}
+                    <ShieldCheck className="w-3 h-3 text-green-400" />
+                    POWERED BY GEMINI 1.5 FLASH
                   </p>
                 </div>
               </div>
-              <button onClick={handleAutoClean} className="flex items-center justify-center gap-2 bg-slate-800 hover:bg-blue-600 text-white px-6 py-3 rounded-xl text-xs font-black uppercase transition-all shadow-lg border border-slate-700 hover:border-blue-400">
-                <Wand2 className="w-4 h-4" /> Auto-Clean Format
-              </button>
             </div>
             
             <div className="mb-4 bg-blue-500/5 border border-blue-500/20 p-4 rounded-2xl flex gap-3 items-start">
                <FileSearch className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
                <p className="text-[11px] text-slate-400 leading-relaxed">
-                  <strong className="text-blue-400">PDF Pro-Tip:</strong> Paste your unformatted text below and hit <strong className="text-blue-300">Auto-Clean</strong>. It will automatically detect category titles, isolate inline answers, and apply sequential numbering perfectly.
+                  <strong className="text-blue-400">AI Parser Active:</strong> Paste your raw, unformatted PDF or Word document text below. The AI will automatically structure the questions, detect answer keys, and build your interactive module.
                </p>
             </div>
 
-            <input type="text" value={moduleName} onChange={(e)=>setModuleName(e.target.value)} placeholder="Enter Module Name" className="w-full p-5 bg-slate-950 rounded-2xl border border-slate-800 mb-4 font-bold outline-none focus:border-blue-500 transition-all placeholder:text-slate-800 text-white" />
+            <input type="text" value={moduleName} onChange={(e)=>setModuleName(e.target.value)} placeholder="Enter Module Name (e.g. MEO Class 3 Boiler)" className="w-full p-5 bg-slate-950 rounded-2xl border border-slate-800 mb-4 font-bold outline-none focus:border-blue-500 transition-all placeholder:text-slate-800 text-white" />
             <textarea value={rawInput} onChange={(e)=>setRawInput(e.target.value)} placeholder="Paste raw text here..." className="w-full h-80 p-6 bg-slate-950 rounded-3xl border border-slate-800 font-mono text-xs mb-6 outline-none focus:border-blue-500 transition-all leading-relaxed placeholder:text-slate-800 text-slate-300" />
             
             <div className="flex flex-col md:flex-row gap-3">
-              <button onClick={handleImport} className="flex-1 py-5 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-black uppercase shadow-xl transition-all active:scale-[0.98]">Generate Module</button>
+              <button 
+                onClick={handleAI_Import} 
+                disabled={isProcessing || !rawInput}
+                className="flex-1 py-5 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-black uppercase shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] flex items-center justify-center gap-3"
+              >
+                {isProcessing ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    AI is Parsing PDF...
+                  </>
+                ) : (
+                  <>Generate Module with AI</>
+                )}
+              </button>
               <button onClick={() => setView('menu')} className="md:px-10 py-5 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl font-black uppercase transition-all active:scale-[0.98]">Cancel</button>
             </div>
           </div>
