@@ -34,7 +34,7 @@ import {
 import { initializeApp } from 'firebase/app';
 // Updated imports for Google Auth
 import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
-import { getFirestore, doc, setDoc, deleteDoc, collection, onSnapshot } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, deleteDoc, collection, onSnapshot, updateDoc } from 'firebase/firestore';
 import LiteYouTubeEmbed from 'react-lite-youtube-embed';
 import 'react-lite-youtube-embed/dist/LiteYouTubeEmbed.css';
 
@@ -347,16 +347,18 @@ export default function App() {
       });
       
       if (Object.keys(newData).length > 0) {
-        setSections(prevSections => {
-          const newSecs = { ...prevSections, ...newData };
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(newSecs));
-          return newSecs;
-        });
-        setModuleFolders(prev => {
-          const updatedF = { ...prev, ...newFolders };
-          localStorage.setItem(FOLDER_STORAGE_KEY, JSON.stringify(updatedF));
-          return updatedF;
-        });
+        // 🚨 THE FIX: Direct replacement (No more ...prev merges)
+        setSections(newData);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(newData));
+
+        setModuleFolders(newFolders);
+        localStorage.setItem(FOLDER_STORAGE_KEY, JSON.stringify(newFolders));
+      } else {
+        // Optional: Clear out local state if the database is completely empty
+        setSections({});
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({}));
+        setModuleFolders({});
+        localStorage.setItem(FOLDER_STORAGE_KEY, JSON.stringify({}));
       }
     });
 
@@ -444,16 +446,27 @@ export default function App() {
     
     setEditingFolder(null);
 
+    // --- THE FIX: SMART FIREBASE UPDATING ---
     if (!isLocalDev && user && db && appId) {
        try {
-          await Promise.all(modulesToUpdate.map(mod => {
+          await Promise.all(modulesToUpdate.map(async (mod) => {
              const safeDocId = getSafeDocId(mod);
-             return setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'modules', safeDocId), { folderName: trimmedNew }, { merge: true });
+             const docRefSafe = doc(db, 'artifacts', appId, 'users', user.uid, 'modules', safeDocId);
+             const docRefRaw = doc(db, 'artifacts', appId, 'users', user.uid, 'modules', mod);
+             
+             try {
+                 // updateDoc strictly EDITS. It will never create a 0-question ghost!
+                 await updateDoc(docRefSafe, { folderName: trimmedNew });
+             } catch (err) {
+                 try {
+                     // Fallback: If the module was saved before the ID system changed, update the raw name.
+                     await updateDoc(docRefRaw, { folderName: trimmedNew });
+                 } catch (e) {}
+             }
           }));
        } catch(err){}
     }
   };
-
   const handleRenameModule = async (oldName, newName) => {
     const trimmedNew = newName.trim();
     if (!trimmedNew || trimmedNew === oldName) {
