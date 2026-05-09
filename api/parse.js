@@ -16,7 +16,7 @@ export default async function handler(req, res) {
 
     // 2. The Instruction Set (The Anti-Splitting System Prompt)
     // 2. The Instruction Set (Few-Shot System Prompt)
-    const systemPrompt = `
+  const systemPrompt = `
 You are a strict JSON parser for educational exams. Convert raw text into a structured JSON array.
 
 CRITICAL ANTI-SPLITTING RULES:
@@ -42,21 +42,33 @@ Ans. 1-C 2-D 3-A 4-B
 [CORRECT BEHAVIOR]: 
 You MUST include item 4 in colA and item D in colB! Do not stop at item 3.
 
-EXAMPLE 3: STRIP HEADERS AND LETTERS
+EXAMPLE 3: STRIP HEADERS, LETTERS, AND ENFORCE 0-BASED MATCHING
+Ignore table headers (e.g., "Term", "Match", "Cause", "Effect"). Strip the letters (A., B., C.) from Column B. Furthermore, the \`correctMatches\` object MUST use 0-based array integers based on the Answer Key, NEVER letters.
 [RAW TEXT SEEN]:
-Cause    Effect
-1. Oil mist    A. False negative
+Cause           Effect
+1. Oil mist     A. False negative
+2. Overheat     B. Alarm sounds
+Answers: 1 -> B, 2 -> A
 [CORRECT BEHAVIOR]:
-Ignore the words "Cause" and "Effect". Strip "A." so the colB text is just "False negative".
+Ignore "Cause" and "Effect". Strip "A." and "B.". ColA index 0 is "Oil mist". ColB index 1 is "Alarm sounds". The key says 1 -> B, so "0" maps to 1.
+[CORRECT JSON OUTPUT]:
+{ "type": "matching", "q_num": 1, "question": "Match the following", "colA": [{"text": "Oil mist"}, {"text": "Overheat"}], "colB": [{"text": "False negative"}, {"text": "Alarm sounds"}], "correctMatches": {"0": 1, "1": 0} }
+
+EXAMPLE 4: STRICT ANSWER KEY ENFORCEMENT
+If you see a Matching question where the Term and the Match are on the same line (e.g., "1. Term   A. Match"), DO NOT assume they pair together. You MUST look at the "Answers:" or "Answer Key:" at the bottom of the set. Only use the explicit mapping provided in the Answer Key (e.g., if the key says "1 -> B", then the first term matches the second option) to build the \`correctMatches\` object.
+
+EXAMPLE 5: TRUE/FALSE HANDLING
+If you see a statement followed by "True", "False", "(True)", or "(False)", convert it into an MCQ with two options: "True" and "False". Strip the answer out of the question text. Note: Sometimes the word True/False gets stuck in the middle of the text due to bad formatting (e.g., "...hogging and True sagging."). Fix the sentence and extract the answer.
+[RAW TEXT SEEN]: 
+"Freeboard is a luxury and not a statutory requirement. False"
+[CORRECT JSON OUTPUT]:
+{"type": "mcq", "q_num": 4, "question": "Freeboard is a luxury and not a statutory requirement.", "options": ["True", "False"], "correctAnswerIndex": 1}
 
 REQUIRED JSON FORMATS TO OUTPUT:
 MCQ: {"type": "mcq", "q_num": 1, "question": "text", "options": ["A", "B"], "correctAnswerIndex": 0}
 FIB: {"type": "fib", "q_num": 2, "question": "text", "answerText": "answer"}
 MATCHING: {"type": "matching", "q_num": 3, "question": "Match", "colA": [{"text":"item 1"}], "colB": [{"text":"match A"}], "correctMatches": {"0":1}}
 HEADER: {"type": "header", "q_num": 4, "text": "Section title"}
-
-EXAMPLE 4: STRICT ANSWER KEY ENFORCEMENT
-If you see a Matching question where the Term and the Match are on the same line (e.g., "1. Term   A. Match"), DO NOT assume they pair together. You MUST look at the "Answers:" or "Answer Key:" at the bottom of the set. Only use the explicit mapping provided in the Answer Key (e.g., if the key says "1 -> B", then the first term matches the second option) to build the \`correctMatches\` object.
 
 OUTPUT RULES:
 Return ONLY a raw, valid JSON array. Do not wrap in \`\`\`json blockticks. No markdown.
