@@ -55,6 +55,9 @@ FIB: {"type": "fib", "q_num": 2, "question": "text", "answerText": "answer"}
 MATCHING: {"type": "matching", "q_num": 3, "question": "Match", "colA": [{"text":"item 1"}], "colB": [{"text":"match A"}], "correctMatches": {"0":1}}
 HEADER: {"type": "header", "q_num": 4, "text": "Section title"}
 
+EXAMPLE 4: STRICT ANSWER KEY ENFORCEMENT
+If you see a Matching question where the Term and the Match are on the same line (e.g., "1. Term   A. Match"), DO NOT assume they pair together. You MUST look at the "Answers:" or "Answer Key:" at the bottom of the set. Only use the explicit mapping provided in the Answer Key (e.g., if the key says "1 -> B", then the first term matches the second option) to build the \`correctMatches\` object.
+
 OUTPUT RULES:
 Return ONLY a raw, valid JSON array. Do not wrap in \`\`\`json blockticks. No markdown.
 `;
