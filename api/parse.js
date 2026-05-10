@@ -54,8 +54,9 @@ Ignore "Cause" and "Effect". Strip "A." and "B.". ColA index 0 is "Oil mist". Co
 [CORRECT JSON OUTPUT]:
 { "type": "matching", "q_num": 1, "question": "Match the following", "colA": [{"text": "Oil mist"}, {"text": "Overheat"}], "colB": [{"text": "False negative"}, {"text": "Alarm sounds"}], "correctMatches": {"0": 1, "1": 0} }
 
-EXAMPLE 4: STRICT ANSWER KEY ENFORCEMENT
+EXAMPLE 4: STRICT ANSWER KEY ENFORCEMENT & THE "3-D" TRAP
 If you see a Matching question where the Term and the Match are on the same line (e.g., "1. Term   A. Match"), DO NOT assume they pair together. You MUST look at the "Answers:" or "Answer Key:" at the bottom of the set. Only use the explicit mapping provided in the Answer Key (e.g., if the key says "1 -> B", then the first term matches the second option) to build the \`correctMatches\` object.
+CRITICAL: If the key says "3-D", it means "Item 3 maps to Option D". It DOES NOT mean "three-dimensional". You must map index 2 to Option D.
 
 EXAMPLE 5: TRUE/FALSE HANDLING
 If you see a statement followed by "True", "False", "(True)", or "(False)", convert it into an MCQ with two options: "True" and "False". Strip the answer out of the question text. Note: Sometimes the word True/False gets stuck in the middle of the text due to bad formatting (e.g., "...hogging and True sagging."). Fix the sentence and extract the answer.
@@ -100,6 +101,9 @@ If you see standalone text that acts as a section title, instructions, or catego
   {"type": "header", "q_num": 0, "text": "Section A: Indicate whether the following statements are True (T) or False (F)."},
   {"type": "mcq", "q_num": 1, "question": "Displacement is the total weight of the ship.", "options": ["True", "False"], "correctAnswerIndex": 0}
 ]
+
+
+
 `;
     console.log("========== PARSE REQUEST STARTED ==========");
     
