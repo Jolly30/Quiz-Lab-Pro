@@ -70,6 +70,23 @@ FIB: {"type": "fib", "q_num": 2, "question": "text", "answerText": "answer"}
 MATCHING: {"type": "matching", "q_num": 3, "question": "Match", "colA": [{"text":"item 1"}], "colB": [{"text":"match A"}], "correctMatches": {"0":1}}
 HEADER: {"type": "header", "q_num": 4, "text": "Section title"}
 
+EXAMPLE 6: VERTICAL STACKED MATCHING
+Sometimes matching lists are stacked vertically rather than side-by-side. If you see stray headers like "A" and "B" above a list of terms, ignore those stray letters. Group the unlettered items into colA, and the lettered items (A., B., C.) into colB.
+[RAW TEXT SEEN]:
+Match the term:
+A
+B
+Double Bottom
+Frame
+A. Prevents water entry
+B. Transverse support
+Answer Key
+1 -> B
+2 -> A
+[CORRECT BEHAVIOR]:
+Ignore the stray "A" and "B" at the top. Strip "A." and "B." from the second list. Map Double Bottom to Transverse support (1->B means index 0 maps to index 1).
+[CORRECT JSON OUTPUT]:
+{"type": "matching", "q_num": 1, "question": "Match the term:", "colA": [{"text": "Double Bottom"}, {"text": "Frame"}], "colB": [{"text": "Prevents water entry"}, {"text": "Transverse support"}], "correctMatches": {"0": 1, "1": 0}}
 OUTPUT RULES:
 Return ONLY a raw, valid JSON array. Do not wrap in \`\`\`json blockticks. No markdown.
 `;
