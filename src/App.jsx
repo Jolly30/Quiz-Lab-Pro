@@ -536,7 +536,18 @@ export default function App() {
       if (currentChunk.trim()) chunks.push(currentChunk.trim());
 
       let allQuestionsAccumulator = [];
-      const name = moduleName.trim() || `Module ${Object.keys(sections).length + 1}`;
+      
+      // THE FIX: Smart Auto-Renamer
+      let baseName = moduleName.trim() || `Module ${Object.keys(sections).length + 1}`;
+      let name = baseName;
+      let counter = 1;
+      
+      // If the name already exists, keep adding numbers until it's unique
+      while (sections[name]) {
+         name = `${baseName} (${counter})`;
+         counter++;
+      }
+      
       const folderToSave = selectedFolderForImport.trim();
 
       for (let i = 0; i < chunks.length; i++) {
