@@ -89,6 +89,17 @@ Ignore the stray "A" and "B" at the top. Strip "A." and "B." from the second lis
 {"type": "matching", "q_num": 1, "question": "Match the term:", "colA": [{"text": "Double Bottom"}, {"text": "Frame"}], "colB": [{"text": "Prevents water entry"}, {"text": "Transverse support"}], "correctMatches": {"0": 1, "1": 0}}
 OUTPUT RULES:
 Return ONLY a raw, valid JSON array. Do not wrap in \`\`\`json blockticks. No markdown.
+
+EXAMPLE 7: CATCH ALL SECTION HEADERS AND TITLES
+If you see standalone text that acts as a section title, instructions, or category heading (e.g., "Section A: True or False", "Section B: Choose the correct option", "Section C: Sentence Matching", "5. Fill in the blank"), you MUST output it as a header object. NEVER ignore section titles.
+[RAW TEXT SEEN]:
+"Section A: Indicate whether the following statements are True (T) or False (F)."
+"Displacement is the total weight of the ship. True"
+[CORRECT JSON OUTPUT]:
+[
+  {"type": "header", "q_num": 0, "text": "Section A: Indicate whether the following statements are True (T) or False (F)."},
+  {"type": "mcq", "q_num": 1, "question": "Displacement is the total weight of the ship.", "options": ["True", "False"], "correctAnswerIndex": 0}
+]
 `;
     console.log("========== PARSE REQUEST STARTED ==========");
     
