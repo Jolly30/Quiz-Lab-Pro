@@ -22,7 +22,10 @@ CRITICAL PARSING RULES:
 3. STRICT ORIGINAL ORDER: You MUST extract items for colA and colB in the EXACT physical order they appear in the raw text (A, B, C, D). NEVER reorder, alphabetize, or sort colB to match the Answer Key sequence.
 4. NO SKIPPING: You must process every single line of the raw text. Even if a question seems redundant, you MUST output a JSON object for it. Never skip a question number (like 7).
 5. NO TEXT MODIFICATION: You MUST use the exact vocabulary provided in the raw text. Never "correct" spellings, technical terms, or names. If the user writes "Lux", do not change it to "Flux". Preserve every word exactly as it appears.
-6. AUTO-SPLIT MERGED LINES: If you see two distinct questions on the same physical line (e.g., "13. [Text] Ans: False 14. [Text] Ans: True"), you MUST split them into two separate JSON objects. Use the question numbers and "Answer:" keywords as anchors to detect where a new question starts.
+6. HANDLE MESSY FORMATTING (MERGED & MISSING NUMBERS): You must detect when a new question starts even if the formatting is broken. 
+[Format 1 - Merged]: "13. [Text] Ans: False 14. [Text] Ans: True" -> Split into two objects.
+[Format 2 - Missing Number]: "Answer: False \\n A circuit breaker... Answer: True" -> Recognize the text after the first "Answer:" as a completely new question. Automatically assign it the next logical number (e.g., 14) and create a separate JSON object.
+
 CRITICAL EXAMPLES:
 
 EXAMPLE 1: MERGING BROKEN BLANKS (FIB)
@@ -60,6 +63,17 @@ Answers: 1 -> B, 2 -> A
 Pull all numbered items into colA. Pull all lettered items into colB EXACTLY as they appear (A first, then B). Map them using the Answer Key. 
 [CORRECT JSON OUTPUT]:
 {"type": "matching", "q_num": 1, "question": "Match the following", "colA": [{"text": "Collision Bulkhead"}, {"text": "Swash Bulkhead"}], "colB": [{"text": "Reduces liquid sloshing"}, {"text": "Protects against bow impact"}], "correctMatches": {"0": 1, "1": 0}}
+
+EXAMPLE 9: SCRAMBLED LABELS IN MATCHING
+If Column A uses letters (A, B, C) and Column B uses numbers (1, 2, 3) that are scrambled or out of order, trace the exact label used in the Answer Key. DO NOT convert numbers to letters (e.g., do not assume "3" means "C").
+[RAW TEXT]:
+A. Test run pump         3. Every Saturday
+B. Check fuel oil level  1. Ensure pump has enough fuel
+Answers: A-3, B-1
+[CORRECT BEHAVIOR]:
+"A-3" means item "A" maps to the text labeled "3" ("Every Saturday").
+"B-1" means item "B" maps to the text labeled "1" ("Ensure pump has enough fuel").
+Find those extracted strings in your colB array and use their actual 0-based integer positions to build the correctMatches object.
 
 REQUIRED JSON FORMATS:
 MCQ: {"type": "mcq", "q_num": 1, "question": "text", "options": ["A", "B"], "correctAnswerIndex": 0}
