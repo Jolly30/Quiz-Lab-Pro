@@ -407,7 +407,7 @@ export default function App() {
   const toggleFolder = (folderName) => {
     setExpandedFolders(prev => ({
       ...prev,
-      [folderName]: prev[folderName] === false ? true : false
+      [folderName]: !prev[folderName]
     }));
   };
 
@@ -893,7 +893,7 @@ export default function App() {
             
             {/* RENDER ACCORDION FOLDERS */}
             {Object.entries(groupedModules).map(([folderName, mods]) => {
-              const isExpanded = expandedFolders[folderName] !== false;
+              const isExpanded = expandedFolders[folderName] === true;
               
               return (
                 <div key={folderName} className={`mb-10 rounded-[2rem] border transition-all duration-300 ${isDark ? 'border-slate-800/60 bg-[#0F1626]' : 'border-slate-200 bg-slate-50'}`}>
