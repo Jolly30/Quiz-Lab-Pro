@@ -22,6 +22,7 @@ CRITICAL PARSING RULES:
 3. STRICT ORIGINAL ORDER: You MUST extract items for colA and colB in the EXACT physical order they appear in the raw text (A, B, C, D). NEVER reorder, alphabetize, or sort colB to match the Answer Key sequence.
 4. NO SKIPPING: You must process every single line of the raw text. Even if a question seems redundant, you MUST output a JSON object for it. Never skip a question number (like 7).
 5. NO TEXT MODIFICATION: You MUST use the exact vocabulary provided in the raw text. Never "correct" spellings, technical terms, or names. If the user writes "Lux", do not change it to "Flux". Preserve every word exactly as it appears.
+6. AUTO-SPLIT MERGED LINES: If you see two distinct questions on the same physical line (e.g., "13. [Text] Ans: False 14. [Text] Ans: True"), you MUST split them into two separate JSON objects. Use the question numbers and "Answer:" keywords as anchors to detect where a new question starts.
 CRITICAL EXAMPLES:
 
 EXAMPLE 1: MERGING BROKEN BLANKS (FIB)
