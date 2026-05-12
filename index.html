@@ -2,15 +2,87 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-   <link rel="icon" type="image/png" href="/logo_v2.png?v=3" />
-   <link rel="apple-touch-icon" href="/logo_v2.png?v=3" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="icon" type="image/png" href="/logo_v2.png?v=5" />
+    <link rel="apple-touch-icon" href="/logo_v2.png?v=5" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Quiz Lab Pro</title>
+
+    <script>
+      (function() {
+        try {
+          var savedTheme = localStorage.getItem('theme_pref');
+          if (savedTheme === 'true' || savedTheme === null) {
+            document.documentElement.classList.add('dark-mode');
+          }
+        } catch (e) {}
+      })();
+    </script>
+    
+    <style>
+      :root {
+        --bg-color: #f8fafc;
+        --text-color: #0f172a;
+      }
+      html.dark-mode {
+        --bg-color: #0B1120;
+        --text-color: #ffffff;
+      }
+
+      body {
+        margin: 0;
+        padding: 0;
+        background-color: var(--bg-color);
+        /* ONLY hide horizontal overflow to fix the white gap, allow vertical scrolling! */
+        overflow-x: hidden; 
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+
+      /* Moving the centering logic here so React can destroy it later */
+      .splash-screen {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        height: 100vh; /* Takes full screen height only while loading */
+        width: 100%;
+        animation: fadeIn 0.4s ease-out forwards;
+      }
+
+      .brand-main {
+        color: var(--text-color);
+        font-size: 32px;
+        font-weight: 600;
+        letter-spacing: -0.8px;
+      }
+
+      .brand-accent {
+        color: #3b82f6;
+        font-size: 36px;
+        font-weight: 900;
+        font-style: italic;
+        letter-spacing: -1px;
+        line-height: 1;
+        animation: popIn 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+      }
+
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+
+      @keyframes popIn {
+        0% { transform: scale(0.8); opacity: 0; }
+        100% { transform: scale(1); opacity: 1; }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="splash-screen">
+        <span class="brand-main">quiz lab</span>
+        <span class="brand-accent">pro</span>
+      </div>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

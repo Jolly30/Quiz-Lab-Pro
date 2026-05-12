@@ -101,6 +101,7 @@ const t = {
     cloudSyncTitle: "Cloud Sync",
     accountLinked: "Account Linked",
     logoutBtn: "Logout",
+    moduleCount: "Modules",
     signInGoogle: "Sign in with Google to Sync Devices",
   },
   mm: {
@@ -165,6 +166,7 @@ const t = {
     cloudSyncTitle: "အကောင့်ချိတ်ဆက်ခြင်း (Cloud Sync)",
     accountLinked: "အကောင့်ချိတ်ဆက်ထားပါသည်",
     logoutBtn: "အကောင့်ထွက်မည်",
+    moduleCount: "မော်ဂျူး",
     signInGoogle: "စက်များအကြား ချိတ်ဆက်ရန် Google ဖြင့် ဝင်ပါ",
   }
 };
@@ -207,6 +209,12 @@ try {
 const STORAGE_KEY = 'meo_prep_pro_v17_stable';
 const FOLDER_STORAGE_KEY = 'meo_prep_pro_folders_v1';
 const getSafeDocId = (str) => encodeURIComponent(str).replace(/[%.\/]/g, '_') || 'unnamed_module';
+
+const formatNumber = (num, lang) => {
+  if (lang === 'en') return num;
+  const burmeseNumbers = ['၀', '၁', '၂', '၃', '၄', '၅', '၆', '၇', '၈', '၉'];
+  return String(num).split('').map(d => burmeseNumbers[d] || d).join('');
+};
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -929,7 +937,7 @@ export default function App() {
                            <div>
                              <h2 className={`text-xl font-black uppercase tracking-widest ${th.textMain}`}>{folderName}</h2>
                              <p className={`text-[10px] font-bold mt-1 tracking-widest uppercase ${th.textMuted}`}>
-                               {mods.length} {mods.length === 1 ? 'Module' : 'Modules'}
+                               {formatNumber(mods.length, lang)} {t[lang].moduleCount}
                              </p>
                            </div>
                            
@@ -987,7 +995,7 @@ export default function App() {
                           ) : (
                              <>
                                 <h3 className={`text-lg font-bold mb-1 pr-20 ${th.textMain}`}>{name}</h3>
-                                <p className={`text-[10px] uppercase font-black tracking-widest ${th.textMuted}`}>{sections[name].filter(q => q.type !== 'header').length} {t[lang].questions}</p>
+                                <p className={`text-[10px] uppercase font-black tracking-widest ${th.textMuted}`}>{formatNumber(sections[name].filter(q => q.type !== 'header').length, lang)} {t[lang].questions}</p>
                              </>
                           )}
 
