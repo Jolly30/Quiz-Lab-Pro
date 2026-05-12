@@ -2,15 +2,33 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="/logo_v2.png" />
-    <link rel="apple-touch-icon" href="/logo_v2.png" />
+    <link rel="icon" type="image/png" href="/logo_v2.png?v=3" />
+    <link rel="apple-touch-icon" href="/logo_v2.png?v=3" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Quiz Lab Pro</title>
+    <style>
+      /* Quick CSS for the instant loader */
+      body { margin: 0; background-color: #0B1120; }
+      .instant-loader {
+        height: 100vh; display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        font-family: sans-serif; color: #3b82f6;
+      }
+      .spinner {
+        width: 40px; height: 40px; border: 4px solid #3b82f6;
+        border-top-color: transparent; border-radius: 50%;
+        animation: spin 1s linear infinite; margin-bottom: 16px;
+      }
+      @keyframes spin { 100% { transform: rotate(360deg); } }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="instant-loader">
+        <div class="spinner"></div>
+        <div style="font-size: 10px; font-weight: 900; letter-spacing: 0.1em;">INITIALIZING...</div>
+      </div>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
