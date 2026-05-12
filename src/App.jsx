@@ -239,7 +239,7 @@ export default function App() {
   
   const [isDark, setIsDark] = useState(() => {
     const saved = localStorage.getItem('theme_pref');
-    return saved !== null ? JSON.parse(saved) : true;
+    return saved !== null ? JSON.parse(saved) : false;
   });
   
   const [isProcessing, setIsProcessing] = useState(false);
