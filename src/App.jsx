@@ -267,8 +267,14 @@ export default function App() {
   const questions = activeSection ? (sections[activeSection] || []) : [];
   const unsubscribeRef = useRef(null);
   const abortControllerRef = useRef(null);
-
+  
+  const [showSplash, setShowSplash] = useState(true);
   // Close combobox when clicking outside
+  useEffect(() => {
+    const timer = setTimeout(() => setShowSplash(false), 2500);
+    return () => clearTimeout(timer);
+  }, []);
+
   useEffect(() => {
     function handleClickOutside(event) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -809,7 +815,20 @@ export default function App() {
     matchActive: isDark ? 'bg-blue-900/30' : 'bg-blue-50',
     modalOverlay: isDark ? 'bg-black/80' : 'bg-slate-900/40',
   };
-
+  if (showSplash) {
+    return (
+      <div className={`fixed inset-0 z-[9999] flex items-center justify-center w-full h-full transition-all duration-700 ${isDark ? 'bg-[#0B1120]' : 'bg-[#f8fafc]'}`}>
+        <div className="flex items-baseline gap-1.5 select-none animate-pulse">
+          <h1 className={`text-4xl md:text-5xl font-black tracking-tighter uppercase ${isDark ? 'text-white' : 'text-slate-900'}`}>
+            Quiz Lab
+          </h1>
+          <span className="text-4xl md:text-5xl font-black italic tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-blue-500 to-cyan-400 drop-shadow-md">
+            PRO
+          </span>
+        </div>
+      </div>
+    );
+  }
   if (loading) return (
     <div className={`min-h-screen flex flex-col items-center justify-center gap-4 ${th.bgMain}`}>
       <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
