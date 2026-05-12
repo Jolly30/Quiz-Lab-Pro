@@ -2,76 +2,15 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="/logo_v2.png?v=5" />
-    <link rel="apple-touch-icon" href="/logo_v2.png?v=5" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+   <link rel="icon" type="image/png" href="/logo_v2.png?v=3" />
+   <link rel="apple-touch-icon" href="/logo_v2.png?v=3" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Quiz Lab Pro</title>
-
-    <script>
-      (function() {
-        try {
-          var savedTheme = localStorage.getItem('theme_pref');
-          if (savedTheme === 'true' || savedTheme === null) {
-            document.documentElement.classList.add('dark-mode');
-          }
-        } catch (e) {}
-      })();
-    </script>
-    
-    <style>
-      /* --- LIGHT THEME (DEFAULT) --- */
-      :root { 
-        --bg-color: #f8fafc; 
-        --text-main: #0f172a;
-      }
-      
-      /* --- DARK THEME --- */
-      html.dark-mode { 
-        --bg-color: #0B1120; 
-        --text-main: #ffffff;
-      }
-
-      body {
-        margin: 0;
-        background-color: var(--bg-color);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        height: 100vh;
-        overflow: hidden; 
-        font-family: system-ui, -apple-system, sans-serif;
-      }
-
-      /* ULTRA MINIMAL TEXT LOADER */
-      .splash-container {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-
-      .brand-text {
-        color: var(--text-main);
-        font-size: 24px;
-        font-weight: 900;
-        font-style: italic;
-        letter-spacing: 0.1em;
-        text-transform: uppercase;
-        animation: pulse-text 2s ease-in-out infinite;
-      }
-
-      /* Adds a smooth native-feeling fade */
-      @keyframes pulse-text {
-        0%, 100% { opacity: 1; transform: scale(1); }
-        50% { opacity: 0.5; transform: scale(0.98); }
-      }
-    </style>
   </head>
   <body>
-    <div id="root">
-      <div class="splash-container">
-        <div class="brand-text">Quiz Lab Pro</div>
-      </div>
-    </div>
+    <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
