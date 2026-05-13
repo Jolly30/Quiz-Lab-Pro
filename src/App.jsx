@@ -815,16 +815,38 @@ export default function App() {
     matchActive: isDark ? 'bg-blue-900/30' : 'bg-blue-50',
     modalOverlay: isDark ? 'bg-black/80' : 'bg-slate-900/40',
   };
-  if (showSplash) {
+if (showSplash) {
     return (
-      <div className={`fixed inset-0 z-[9999] flex items-center justify-center w-full h-full transition-all duration-700 ${isDark ? 'bg-[#0B1120]' : 'bg-[#f8fafc]'}`}>
-        <div className="flex items-baseline gap-1.5 select-none animate-pulse">
-          <h1 className={`text-4xl md:text-5xl font-black tracking-tighter uppercase ${isDark ? 'text-white' : 'text-slate-900'}`}>
-            Quiz Lab
-          </h1>
-          <span className="text-4xl md:text-5xl font-black italic tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-blue-500 to-cyan-400 drop-shadow-md">
-            PRO
-          </span>
+      <div className={`fixed inset-0 z-[9999] flex flex-col items-center justify-center w-full h-full transition-opacity duration-1000 ${isDark ? 'bg-[#0B1120]' : 'bg-[#f8fafc]'}`}>
+        
+        {/* The Logo Container - Increased width slightly for a more "Pro" feel */}
+        <div className="w-[65vw] max-w-[320px] aspect-square md:max-w-[400px] animate-in zoom-in-95 fade-in duration-1000 ease-out">
+          <img 
+            src="/file.svg" 
+            alt="Quiz Lab Pro" 
+            className="w-full h-full object-contain"
+            style={{ 
+              /* SMOOTHNESS FIX: Tells browser to use high-quality math for curves */
+              shapeRendering: 'geometricPrecision',
+              imageRendering: 'optimizeQuality',
+              
+              /* THE "GLUE" TRICK: A tiny drop shadow with the SAME color as the logo 
+                 fills in those thin vertical lines and smooths the edges */
+              filter: isDark 
+                ? 'drop-shadow(0 0 0.5px rgba(255,255,255,0.2))' 
+                : 'drop-shadow(0 0 0.5px rgba(0,0,0,0.1))',
+
+              /* Matches background to hide 1px flicker gaps */
+              backgroundColor: isDark ? '#0B1120' : '#f8fafc'
+            }}
+          />
+        </div>
+
+        {/* Branding text at the bottom */}
+        <div className="absolute bottom-12 animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-500">
+          <p className={`text-[10px] font-black tracking-[0.3em] uppercase opacity-30 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+            Powered by Yadanar
+          </p>
         </div>
       </div>
     );
