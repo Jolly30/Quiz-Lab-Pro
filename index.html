@@ -2,16 +2,21 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    
     <link rel="icon" type="image/png" href="/logo_v2.png?v=5" />
     <link rel="apple-touch-icon" href="/logo_v2.png?v=5" />
+    
+    <link rel="manifest" href="/manifest.json" />
+
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    
     <title>Quiz Lab Pro</title>
 
     <script>
       (function() {
         try {
           var isDark = localStorage.getItem('theme_pref');
-          // If they saved dark mode, OR if it's their first time and their phone is in dark mode
+          // Check saved preference OR system preference
           if (isDark === 'true' || (isDark === null && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
             document.documentElement.classList.add('dark');
           }
@@ -32,7 +37,8 @@
         background-color: #0B1120;
       }
     </style>
-  </head>
+
+    </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
