@@ -819,32 +819,25 @@ if (showSplash) {
     return (
       <div className={`fixed inset-0 z-[9999] flex flex-col items-center justify-center w-full h-full transition-opacity duration-1000 ${isDark ? 'bg-[#0B1120]' : 'bg-[#f8fafc]'}`}>
         
-        {/* The Logo Container - Increased width slightly for a more "Pro" feel */}
-        <div className="w-[65vw] max-w-[320px] aspect-square md:max-w-[400px] animate-in zoom-in-95 fade-in duration-1000 ease-out">
+        {/* The React Splash Container - perfectly matches the HTML version */}
+        <div className="w-[65vw] max-w-[320px] aspect-video animate-in zoom-in-95 fade-in duration-1000 ease-out">
           <img 
             src="/file.svg" 
             alt="Quiz Lab Pro" 
             className="w-full h-full object-contain"
             style={{ 
-              /* SMOOTHNESS FIX: Tells browser to use high-quality math for curves */
+              imageRendering: '-webkit-optimize-contrast',
               shapeRendering: 'geometricPrecision',
-              imageRendering: 'optimizeQuality',
-              
-              /* THE "GLUE" TRICK: A tiny drop shadow with the SAME color as the logo 
-                 fills in those thin vertical lines and smooths the edges */
-              filter: isDark 
-                ? 'drop-shadow(0 0 0.5px rgba(255,255,255,0.2))' 
-                : 'drop-shadow(0 0 0.5px rgba(0,0,0,0.1))',
-
-              /* Matches background to hide 1px flicker gaps */
-              backgroundColor: isDark ? '#0B1120' : '#f8fafc'
+              /* Ensures no ghost boxes appear on Retina screens */
+              background: 'transparent',
+              border: 'none',
+              outline: 'none'
             }}
           />
         </div>
 
-        {/* Branding text at the bottom */}
-        <div className="absolute bottom-12 animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-500">
-          <p className={`text-[10px] font-black tracking-[0.3em] uppercase opacity-30 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+        <div className="absolute bottom-12 animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-300">
+          <p className={`text-[10px] font-black tracking-[0.2em] uppercase opacity-40 ${isDark ? 'text-white' : 'text-slate-900'}`}>
             Powered by Yadanar
           </p>
         </div>
