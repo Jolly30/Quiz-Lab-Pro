@@ -815,35 +815,24 @@ export default function App() {
     matchActive: isDark ? 'bg-blue-900/30' : 'bg-blue-50',
     modalOverlay: isDark ? 'bg-black/80' : 'bg-slate-900/40',
   };
-if (showSplash) {
-    return (
-      <div className={`fixed inset-0 z-[9999] flex flex-col items-center justify-center w-full h-full transition-opacity duration-1000 ${isDark ? 'bg-[#0B1120]' : 'bg-[#f8fafc]'}`}>
-        
-        {/* The React Splash Container - perfectly matches the HTML version */}
-        <div className="w-[65vw] max-w-[320px] aspect-video animate-in zoom-in-95 fade-in duration-1000 ease-out">
-          <img 
-            src="/file.svg" 
-            alt="Quiz Lab Pro" 
-            className="w-full h-full object-contain"
-            style={{ 
-              imageRendering: '-webkit-optimize-contrast',
-              shapeRendering: 'geometricPrecision',
-              /* Ensures no ghost boxes appear on Retina screens */
-              background: 'transparent',
-              border: 'none',
-              outline: 'none'
-            }}
-          />
-        </div>
-
-        <div className="absolute bottom-12 animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-300">
-          <p className={`text-[10px] font-black tracking-[0.2em] uppercase opacity-40 ${isDark ? 'text-white' : 'text-slate-900'}`}>
-            Powered by Yadanar
-          </p>
-        </div>
+  if (showSplash) {
+  return (
+    <div className={`fixed inset-0 z-[9999] flex flex-col items-center justify-center w-full h-full transition-opacity duration-1000 ${isDark ? 'bg-[#0B1120]' : 'bg-[#f8fafc]'}`}>
+      <div className="w-[65vw] max-w-[320px] aspect-video animate-in zoom-in-95 fade-in duration-1000 ease-out">
+        <img 
+          src="/file.svg" 
+          className="w-full h-full object-contain"
+          style={{ imageRendering: '-webkit-optimize-contrast', shapeRendering: 'geometricPrecision' }}
+        />
       </div>
-    );
-  }
+      <div className="absolute bottom-12 animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-300">
+        <p className={`text-[10px] font-black tracking-[0.2em] uppercase opacity-40 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+          Powered by Yadanar
+        </p>
+      </div>
+    </div>
+  );
+}
   if (loading) return (
     <div className={`min-h-screen flex flex-col items-center justify-center gap-4 ${th.bgMain}`}>
       <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>

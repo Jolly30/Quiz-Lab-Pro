@@ -3,20 +3,16 @@
   "name": "Quiz Lab Pro",
   "icons": [
     {
-      "src": "/file.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "/logo_v2.png",
+      "sizes": "192x192",
+      "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/file.svg",
-      "sizes": "192x192",
-      "type": "image/svg+xml"
-    },
-    {
-      "src": "/file.svg",
+      "src": "/logo_v2.png",
       "sizes": "512x512",
-      "type": "image/svg+xml"
+      "type": "image/png",
+      "purpose": "any"
     }
   ],
   "start_url": "/",
