@@ -818,7 +818,7 @@ export default function App() {
   if (showSplash) {
   return (
     <div className={`fixed inset-0 z-[9999] flex flex-col items-center justify-center w-full h-full transition-opacity duration-1000 ${isDark ? 'bg-[#0B1120]' : 'bg-[#f8fafc]'}`}>
-      <div className="w-[65vw] max-w-[320px] aspect-video animate-in zoom-in-95 fade-in duration-1000 ease-out">
+      <div className="w-[85vw] max-w-[500px] aspect-video animate-in zoom-in-95 fade-in duration-1000 ease-out">
         <img 
           src="/file.svg" 
           className="w-full h-full object-contain"
