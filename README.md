@@ -121,3 +121,10 @@ The application handles text ingestion via a serverless POST endpoint `/api/pars
 1. Validates input formatting and segments chunks when inputs exceed token thresholds.
 2. Directs the Google Gemini API to return a strict JSON array matching the specific quiz models (MCQ, FIB, Matching, Header).
 3. Provides fallback error handling for API limits or malformed output parsing.
+
+---
+
+## Author
+
+Developed by **[Yadanar (Jolly30)](./PROFILE.md)**.
+
