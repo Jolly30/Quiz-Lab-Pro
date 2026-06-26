@@ -67,11 +67,11 @@ Quiz Lab Pro is an intelligent, AI-powered educational exam parser and interacti
 
 ### Running Locally
 
-* To start the local development server:
+* To start the local development server (supports both React frontend and Vercel `/api` backend routes):
   ```bash
-  npm run dev
+  npx vercel dev
   ```
-  Open `http://localhost:5173` in your browser.
+  Open `http://localhost:3000` in your browser.
 
 * To run linting checks:
   ```bash
