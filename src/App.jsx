@@ -173,9 +173,6 @@ const t = {
 
 
 // --- CRASH-PROOF FIREBASE SETUP ---
-// --- CRASH-PROOF FIREBASE SETUP ---
-const defaultGeminiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
-
 let isLocalDev = true;
 let app = null;
 let auth = null;
