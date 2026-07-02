@@ -11,8 +11,23 @@ export default async function handler(req, res) {
     const apiKey = userCustomKey || process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
 
     if (!apiKey) {
-      console.log('ENV DEBUG:', Object.keys(process.env).filter(k => k.includes('GEMINI')));
+      console.warn('No Gemini API key configured');
       return res.status(401).json({ error: 'No API Key available.' });
+    }
+
+    // Input validation & sanitization
+    if (!rawInput || typeof rawInput !== 'string') {
+      return res.status(400).json({ error: 'Invalid input: raw text is required.' });
+    }
+
+    const sanitizedInput = rawInput
+      .replace(/<[^>]*>/g, '')        // strip HTML tags
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')  // strip control chars
+      .trim()
+      .slice(0, 100000);              // cap at 100k chars
+
+    if (sanitizedInput.length === 0) {
+      return res.status(400).json({ error: 'Input text is empty after sanitization.' });
     }
 
   const systemPrompt = `
@@ -101,7 +116,7 @@ Return ONLY a raw, valid JSON array. Do not wrap in \`\`\`json blockticks. No ma
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ 
-            parts: [{ text: systemPrompt + "\n\nRaw Text to Parse:\n" + rawInput }] 
+            parts: [{ text: systemPrompt + "\n\nRaw Text to Parse:\n" + sanitizedInput }] 
           }],
           generationConfig: {
             responseMimeType: "application/json", 

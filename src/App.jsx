@@ -208,7 +208,13 @@ try {
 // ----------------------------------
 const STORAGE_KEY = 'meo_prep_pro_v17_stable';
 const FOLDER_STORAGE_KEY = 'meo_prep_pro_folders_v1';
+const API_KEY_STORAGE = 'user_gemini_key';
 const getSafeDocId = (str) => encodeURIComponent(str).replace(/[%.\/]/g, '_') || 'unnamed_module';
+
+// Simple obfuscation for localStorage (prevents casual reading, not cryptographic security)
+const _encKey = 'QLP';
+const encodeKey = (val) => { try { return btoa([...val].map((c,i) => String.fromCharCode(c.charCodeAt(0) ^ _encKey.charCodeAt(i % _encKey.length))).join('')); } catch { return ''; } };
+const decodeKey = (val) => { try { return [...atob(val)].map((c,i) => String.fromCharCode(c.charCodeAt(0) ^ _encKey.charCodeAt(i % _encKey.length))).join(''); } catch { return ''; } };
 
 const formatNumber = (num, lang) => {
   if (lang === 'en') return num;
@@ -305,8 +311,14 @@ export default function App() {
 
   // Auth Initialization (Updated for Google Sign In)
   useEffect(() => {
-    const savedKey = localStorage.getItem('user_gemini_key');
-    if (savedKey) setUserCustomKey(savedKey);
+    const savedKey = localStorage.getItem(API_KEY_STORAGE);
+    if (savedKey) {
+      // Try decoding (new format); fall back to plaintext (legacy)
+      const decoded = decodeKey(savedKey);
+      setUserCustomKey(decoded || savedKey);
+      // Migrate legacy plaintext to encoded
+      if (!decoded) localStorage.setItem(API_KEY_STORAGE, encodeKey(savedKey));
+    }
 
     if (isLocalDev || !auth) {
       const savedSec = localStorage.getItem(STORAGE_KEY);
@@ -410,12 +422,12 @@ export default function App() {
 
   const saveCustomKey = (key) => {
     setUserCustomKey(key);
-    localStorage.setItem('user_gemini_key', key);
+    localStorage.setItem(API_KEY_STORAGE, encodeKey(key));
   };
 
   const removeCustomKey = () => {
     setUserCustomKey('');
-    localStorage.removeItem('user_gemini_key');
+    localStorage.removeItem(API_KEY_STORAGE);
   };
 
   const toggleFolder = (folderName) => {
@@ -475,10 +487,10 @@ export default function App() {
                  try {
                      // Fallback: If the module was saved before the ID system changed, update the raw name.
                      await updateDoc(docRefRaw, { folderName: trimmedNew });
-                 } catch (e) {}
+                 } catch (e) { console.warn('Folder rename fallback failed:', e.message); }
              }
           }));
-       } catch(err){}
+       } catch(err){ console.error('Folder rename sync failed:', err.message); }
     }
   };
   const handleRenameModule = async (oldName, newName) => {
@@ -518,7 +530,7 @@ export default function App() {
           updatedAt: Date.now()
         });
         await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'modules', oldSafeId));
-      } catch(e){}
+      } catch(e){ console.error('Module rename sync failed:', e.message); }
     }
   };
 
@@ -595,7 +607,7 @@ export default function App() {
           try {
             const errorData = await response.json();
             errorMessage = (errorData.error || "").toLowerCase();
-          } catch (err) {}
+          } catch (err) { console.warn('Error response parse failed:', err.message); }
 
           if (errorMessage.includes('demand') || errorMessage.includes('busy') || response.status === 503) {
             attempt++;
@@ -716,7 +728,7 @@ export default function App() {
       try {
         const safeDocId = getSafeDocId(name);
         await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'modules', safeDocId));
-      } catch (err) {}
+      } catch (err) { console.error('Module delete sync failed:', err.message); }
     }
   };
 
@@ -749,7 +761,7 @@ export default function App() {
           const safeDocId = getSafeDocId(mod);
           return deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'modules', safeDocId));
         }));
-      } catch (err) {}
+      } catch (err) { console.error('Folder delete sync failed:', err.message); }
     }
   };
 
