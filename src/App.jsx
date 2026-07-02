@@ -1,10 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { 
-  CircleCheck, 
-  CircleX, 
-  RotateCcw, 
-  Upload, 
-  List, 
+import { useState, useEffect, useRef } from 'react';
+import {
+  CircleCheck,
+  CircleX,
+  RotateCcw,
   Trash2, 
   Trophy, 
   Target, 
