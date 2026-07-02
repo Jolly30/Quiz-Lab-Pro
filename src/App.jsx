@@ -479,7 +479,7 @@ export default function App() {
              try {
                  // updateDoc strictly EDITS. It will never create a 0-question ghost!
                  await updateDoc(docRefSafe, { folderName: trimmedNew });
-             } catch (err) {
+             } catch {
                  try {
                      // Fallback: If the module was saved before the ID system changed, update the raw name.
                      await updateDoc(docRefRaw, { folderName: trimmedNew });
