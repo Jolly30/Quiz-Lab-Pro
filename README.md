@@ -37,13 +37,15 @@ Quiz Lab Pro is an intelligent, AI-powered educational exam parser and interacti
 
 * Node.js (v18.x or higher)
 * npm (v9.x or higher)
+* [Vercel CLI](https://vercel.com/docs/cli) (`npm i -g vercel`)
+* A Google Gemini API key — get one free at [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
 
 ### Installation
 
-1. Clone the repository and navigate to the project directory:
+1. Clone the repository:
    ```bash
-   git clone <repository-url>
-   cd my-quiz-app
+   git clone https://github.com/Jolly30/Quiz-Lab-Pro.git
+   cd Quiz-Lab-Pro
    ```
 
 2. Install dependencies:
@@ -51,45 +53,41 @@ Quiz Lab Pro is an intelligent, AI-powered educational exam parser and interacti
    npm install
    ```
 
-3. Set up the local environment variables. Create a `.env.local` file in the root directory and configure the following keys:
-   ```env
-   # Gemini API Key for serverless parsing
-   GEMINI_API_KEY=your_gemini_api_key_here
+3. Create a `.env` file from the template:
+   ```bash
+   cp .env.example .env
+   ```
 
-   # Firebase Configuration
-   VITE_FIREBASE_API_KEY=your_api_key
-   VITE_FIREBASE_AUTH_DOMAIN=your_auth_domain
-   VITE_FIREBASE_PROJECT_ID=your_project_id
-   VITE_FIREBASE_STORAGE_BUCKET=your_storage_bucket
-   VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
-   VITE_FIREBASE_APP_ID=your_app_id
+4. Edit `.env` and add your Gemini API key:
+   ```
+   GEMINI_API_KEY=your_gemini_api_key_here
    ```
 
 ### Running Locally
 
-* To start the local development server (supports both React frontend and Vercel `/api` backend routes):
-  ```bash
-  npx vercel dev
-  ```
-  Open `http://localhost:3000` in your browser.
+Start the development server with Vercel CLI (required for API routes):
 
-* To run linting checks:
-  ```bash
-  npm run lint
-  ```
+```bash
+vercel dev
+```
+
+Open `http://localhost:3000` in your browser.
+
+> **Note:** Use `vercel dev`, not `vite dev`. The `/api/parse` serverless function requires Vercel's dev server to run.
+
+### Linting
+
+```bash
+npm run lint
+```
 
 ### Production Build
 
-* To compile and bundle the application for production:
-  ```bash
-  npm run build
-  ```
-  The production assets will be generated in the `/dist` directory.
+```bash
+npm run build
+```
 
-* To preview the production bundle locally:
-  ```bash
-  npm run preview
-  ```
+The production assets will be generated in the `/dist` directory.
 
 ---
 
@@ -103,13 +101,17 @@ Quiz Lab Pro is an intelligent, AI-powered educational exam parser and interacti
 │   ├── logo_v2.png      # PWA and app favicon/icon
 │   └── manifest.json    # PWA configuration manifest
 ├── src/
-│   ├── assets/          # Static local assets
 │   ├── App.jsx          # Main React application component
 │   ├── index.css        # Tailwind stylesheet
 │   └── main.jsx         # React application entry point
+├── .env.example         # Environment variable template
+├── .gitignore           # Git ignore rules
 ├── eslint.config.js     # ESLint configuration
+├── index.html           # Entry HTML file
+├── package.json         # Dependencies and scripts
 ├── postcss.config.js    # PostCSS rules for Tailwind
 ├── tailwind.config.js   # Tailwind utility theme configuration
+├── vercel.json          # Vercel deployment and security headers config
 └── vite.config.js       # Vite configuration with chunk optimizations
 ```
 
@@ -118,13 +120,35 @@ Quiz Lab Pro is an intelligent, AI-powered educational exam parser and interacti
 ## API Architecture
 
 The application handles text ingestion via a serverless POST endpoint `/api/parse`. It takes a `rawInput` body string and processes it using instructions that enforce structural constraints:
-1. Validates input formatting and segments chunks when inputs exceed token thresholds.
-2. Directs the Google Gemini API to return a strict JSON array matching the specific quiz models (MCQ, FIB, Matching, Header).
-3. Provides fallback error handling for API limits or malformed output parsing.
+
+1. **Input Sanitization**: Strips HTML tags, control characters, and enforces a 100k character limit.
+2. **Chunking**: Segments large inputs into chunks that fit within API token limits.
+3. **AI Parsing**: Sends instructions to the Google Gemini API to return a strict JSON array matching the specific quiz models (MCQ, FIB, Matching, Header).
+4. **Error Handling**: Retries on rate limits (429/503) with exponential backoff, and provides fallback error messages for malformed output.
+
+---
+
+## Security
+
+* **API keys are server-side only** — the Gemini key is never exposed in the client bundle.
+* **Input sanitization** — all user input is sanitized before being sent to the AI.
+* **Security headers** — `X-Content-Type-Options`, `X-Frame-Options`, `X-XSS-Protection`, and `Referrer-Policy` are configured via `vercel.json`.
+* **localStorage encryption** — user API keys stored locally are obfuscated (not plaintext).
+
+---
+
+## Environment Variables
+
+| Variable | Where Used | Description |
+|---|---|---|
+| `GEMINI_API_KEY` | Server-side only | Google Gemini API key for AI parsing |
+
+Get your key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
+
+For production, set this variable in your [Vercel dashboard](https://vercel.com/dashboard) under **Settings → Environment Variables**.
 
 ---
 
 ## Author
 
 Developed by **[Yadanar (Jolly30)](./PROFILE.md)**.
-
