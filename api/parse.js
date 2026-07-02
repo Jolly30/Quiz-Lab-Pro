@@ -22,6 +22,7 @@ export default async function handler(req, res) {
 
     const sanitizedInput = rawInput
       .replace(/<[^>]*>/g, '')        // strip HTML tags
+      // eslint-disable-next-line no-control-regex
       .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')  // strip control chars
       .trim()
       .slice(0, 100000);              // cap at 100k chars

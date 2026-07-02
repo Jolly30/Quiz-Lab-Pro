@@ -312,6 +312,7 @@ export default function App() {
     if (savedKey) {
       // Try decoding (new format); fall back to plaintext (legacy)
       const decoded = decodeKey(savedKey);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setUserCustomKey(decoded || savedKey);
       // Migrate legacy plaintext to encoded
       if (!decoded) localStorage.setItem(API_KEY_STORAGE, encodeKey(savedKey));
