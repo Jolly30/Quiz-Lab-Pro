@@ -435,9 +435,21 @@ export default function App() {
       return;
     }
     const provider = new GoogleAuthProvider();
-    // Detect mobile: use redirect (more reliable), popup (faster on desktop)
+    // PWA / Home Screen: MUST use popup (redirect loses state in sandbox)
+    // Mobile browser: use redirect (popup gets blocked)
+    // Desktop: use popup (faster)
+    const isPWA = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
     const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-    if (isMobile) {
+
+    if (isPWA) {
+      // PWA always uses popup — redirect breaks in standalone sandbox
+      try {
+        await signInWithPopup(auth, provider);
+      } catch (err) {
+        console.error('PWA login error:', err.code, err.message);
+        alert("Google Login Error: " + err.message);
+      }
+    } else if (isMobile) {
       await signInWithRedirect(auth, provider);
     } else {
       try {
