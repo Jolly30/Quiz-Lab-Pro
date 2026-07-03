@@ -1,5 +1,4 @@
 /* global process */
-import { db } from './firebase-admin.js';
 export const maxDuration = 60; // Vercel Node.js timeout allowance
 
 export default async function handler(req, res) {
@@ -12,6 +11,15 @@ export default async function handler(req, res) {
 
     // Resolve API key: Firestore user key → client custom key → server env
     let apiKey = process.env.GEMINI_API_KEY;
+
+    // Dynamically import firebase-admin to avoid module resolution issues
+    let db = null;
+    try {
+      const firebaseAdmin = await import('./firebase-admin.js');
+      db = firebaseAdmin.db;
+    } catch (importErr) {
+      console.warn('Firebase Admin import failed:', importErr.message);
+    }
 
     if (uid && db) {
       try {
