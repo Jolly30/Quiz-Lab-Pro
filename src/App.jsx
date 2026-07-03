@@ -457,10 +457,12 @@ export default function App() {
     if (!auth) return;
     try {
       await signOut(auth);
-      setSections({}); 
-      setModuleFolders({}); 
+      setSections({});
+      setModuleFolders({});
+      setUserCustomKey('');
       localStorage.removeItem(STORAGE_KEY);
       localStorage.removeItem(FOLDER_STORAGE_KEY);
+      localStorage.removeItem(API_KEY_STORAGE);
     } catch (error) {
       console.error("Logout failed:", error);
     }
