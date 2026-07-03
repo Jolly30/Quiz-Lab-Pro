@@ -334,15 +334,17 @@ export default function App() {
 
     // Handle redirect result from Google sign-in (mobile)
     getRedirectResult(auth).then(result => {
-      if (result) {
-        // User signed in via redirect — onAuthStateChanged will fire
-        console.log('Redirect sign-in successful');
+      if (result && result.user) {
+        console.log('Redirect sign-in successful:', result.user.email);
+      } else {
+        console.log('No redirect result (normal if not coming from redirect)');
       }
     }).catch(err => {
-      console.warn('Redirect result error:', err.message);
+      console.error('Redirect result error:', err.code, err.message);
     });
 
     const unsubscribe = onAuthStateChanged(auth, (u) => {
+      console.log('Auth state changed:', u ? u.email : 'signed out');
       setUser(u);
       setLoading(false);
 
