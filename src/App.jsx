@@ -32,7 +32,7 @@ import {
 import { initializeApp } from 'firebase/app';
 // Updated imports for Google Auth
 import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
-import { getFirestore, doc, setDoc, deleteDoc, collection, onSnapshot, updateDoc } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, deleteDoc, collection, onSnapshot, updateDoc, getDoc } from 'firebase/firestore';
 import LiteYouTubeEmbed from 'react-lite-youtube-embed';
 import 'react-lite-youtube-embed/dist/LiteYouTubeEmbed.css';
 
@@ -330,6 +330,24 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
       setLoading(false);
+
+      // Fetch user's Gemini key from Firestore on login
+      if (u && db && appId) {
+        getDoc(doc(db, 'artifacts', appId, 'users', u.uid, 'settings', 'apiKeys'))
+          .then(snap => {
+            if (snap.exists()) {
+              const data = snap.data();
+              if (data.geminiKey) {
+                const decoded = decodeKey(data.geminiKey);
+                if (decoded) {
+                  setUserCustomKey(decoded);
+                  localStorage.setItem(API_KEY_STORAGE, data.geminiKey);
+                }
+              }
+            }
+          })
+          .catch(err => console.warn('Failed to fetch key from Firestore:', err.message));
+      }
     });
 
     // Load from local storage immediately to prevent flashing while waiting for cloud
@@ -419,11 +437,32 @@ export default function App() {
   const saveCustomKey = (key) => {
     setUserCustomKey(key);
     localStorage.setItem(API_KEY_STORAGE, encodeKey(key));
+
+    // Sync to Firestore if logged in
+    if (!isLocalDev && user && db && appId) {
+      try {
+        setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'apiKeys'), {
+          geminiKey: encodeKey(key),
+          updatedAt: Date.now()
+        });
+      } catch (err) {
+        console.warn('Failed to sync key to Firestore:', err.message);
+      }
+    }
   };
 
   const removeCustomKey = () => {
     setUserCustomKey('');
     localStorage.removeItem(API_KEY_STORAGE);
+
+    // Remove from Firestore if logged in
+    if (!isLocalDev && user && db && appId) {
+      try {
+        deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'apiKeys'));
+      } catch (err) {
+        console.warn('Failed to remove key from Firestore:', err.message);
+      }
+    }
   };
 
   const toggleFolder = (folderName) => {
@@ -587,10 +626,14 @@ export default function App() {
             : `အစု ${i + 1} / ${chunks.length} ကို လုပ်ဆောင်နေပါသည်... ${attempt > 0 ? `(အကြိမ် ${attempt})` : ''}`
           );
           console.log(`--- EXACT TEXT SENT TO AI (Batch ${i+1}) ---`, JSON.stringify(chunks[i]));
+          // Send uid (server reads key from Firestore) or userCustomKey (legacy fallback)
+          const apiBody = (!isLocalDev && user)
+            ? { rawInput: chunks[i], uid: user.uid }
+            : { rawInput: chunks[i], userCustomKey };
           const response = await fetch('/api/parse', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ rawInput: chunks[i], userCustomKey }),
+            body: JSON.stringify(apiBody),
             signal: signal
           });
 

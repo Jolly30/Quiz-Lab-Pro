@@ -1,4 +1,5 @@
 /* global process */
+import { db } from './firebase-admin.js';
 export const maxDuration = 60; // Vercel Node.js timeout allowance
 
 export default async function handler(req, res) {
@@ -7,8 +8,30 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { rawInput, userCustomKey } = req.body;
-    const apiKey = userCustomKey || process.env.GEMINI_API_KEY;
+    const { rawInput, userCustomKey, uid } = req.body;
+
+    // Resolve API key: Firestore user key → client custom key → server env
+    let apiKey = process.env.GEMINI_API_KEY;
+
+    if (uid && db) {
+      try {
+        const docSnap = await db.doc(`artifacts/quiz-lab-pro/users/${uid}/settings/apiKeys`).get();
+        if (docSnap.exists && docSnap.data().geminiKey) {
+          // Decode the key (XOR + base64)
+          const encKey = 'QLP';
+          apiKey = [...atob(docSnap.data().geminiKey)].map((c, i) =>
+            String.fromCharCode(c.charCodeAt(0) ^ encKey.charCodeAt(i % encKey.length))
+          ).join('');
+        }
+      } catch (err) {
+        console.warn('Firestore key lookup failed:', err.message);
+      }
+    }
+
+    // Fallback to client-sent key
+    if (!apiKey && userCustomKey) {
+      apiKey = userCustomKey;
+    }
 
     if (!apiKey) {
       console.warn('No Gemini API key configured');
