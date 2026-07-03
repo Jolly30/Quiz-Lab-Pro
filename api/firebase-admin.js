@@ -1,11 +1,13 @@
 /* global process */
 
 let db = null;
+let auth = null;
 
-async function initFirestore() {
+async function initFirebase() {
   try {
     const { initializeApp, cert, getApps } = await import('firebase-admin/app');
     const { getFirestore } = await import('firebase-admin/firestore');
+    const { getAuth } = await import('firebase-admin/auth');
 
     if (!getApps().length) {
       try {
@@ -23,12 +25,18 @@ async function initFirestore() {
     } catch {
       // Firestore not available
     }
+
+    try {
+      auth = getAuth();
+    } catch {
+      // Auth not available
+    }
   } catch (err) {
     console.warn('firebase-admin not available:', err.message);
   }
 }
 
 // Initialize on module load
-await initFirestore();
+await initFirebase();
 
-export { db };
+export { db, auth };

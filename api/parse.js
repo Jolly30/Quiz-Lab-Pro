@@ -1,26 +1,85 @@
 /* global process */
 export const maxDuration = 60; // Vercel Node.js timeout allowance
 
+// --- Simple in-memory rate limiter (per-deployment, per-IP) ---
+const rateLimitMap = new Map();
+const RATE_LIMIT_WINDOW_MS = 60000; // 1 minute
+const RATE_LIMIT_MAX = 5;           // 5 requests per minute per IP
+
+function checkRateLimit(ip) {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+  if (!entry || now - entry.start > RATE_LIMIT_WINDOW_MS) {
+    rateLimitMap.set(ip, { start: now, count: 1 });
+    return true;
+  }
+  entry.count++;
+  if (entry.count > RATE_LIMIT_MAX) return false;
+  return true;
+}
+
+// Clean up stale entries every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of rateLimitMap) {
+    if (now - entry.start > RATE_LIMIT_WINDOW_MS * 2) rateLimitMap.delete(ip);
+  }
+}, 300000);
+
+// --- CORS helper ---
+function setCorsHeaders(res) {
+  res.setHeader('Access-Control-Allow-Origin', process.env.ALLOWED_ORIGIN || '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+}
+
 export default async function handler(req, res) {
+  setCorsHeaders(res);
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  try {
-    const { rawInput, userCustomKey, uid } = req.body;
+  // --- Rate limiting ---
+  const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || 'unknown';
+  if (!checkRateLimit(ip)) {
+    return res.status(429).json({ error: 'Too many requests. Please wait a minute and try again.' });
+  }
 
-    // Resolve API key: Firestore user key → client custom key → server env
+  try {
+    const { rawInput, idToken } = req.body;
+
+    // --- Resolve API key from server env ---
     let apiKey = process.env.GEMINI_API_KEY;
 
-    // Dynamically import firebase-admin to avoid module resolution issues
+    // --- Dynamically import firebase-admin ---
     let db = null;
+    let auth = null;
     try {
       const firebaseAdmin = await import('./firebase-admin.js');
       db = firebaseAdmin.db;
+      auth = firebaseAdmin.auth;
     } catch (importErr) {
-      console.warn('Firebase Admin import failed:', importErr.message);
+      // Firebase Admin not available — continue with env key only
     }
 
+    // --- Verify the user's identity with Firebase Admin ---
+    let uid = null;
+    if (idToken && auth) {
+      try {
+        const decodedToken = await auth.verifyIdToken(idToken);
+        uid = decodedToken.uid;
+      } catch (err) {
+        console.warn('Token verification failed:', err.message);
+        return res.status(401).json({ error: 'Invalid or expired authentication. Please sign in again.' });
+      }
+    }
+
+    // --- Fetch user's private API key from Firestore (if authenticated) ---
     if (uid && db) {
       try {
         const docSnap = await db.doc(`artifacts/quiz-lab-pro/users/${uid}/settings/apiKeys`).get();
@@ -37,17 +96,12 @@ export default async function handler(req, res) {
       }
     }
 
-    // Fallback to client-sent key
-    if (!apiKey && userCustomKey) {
-      apiKey = userCustomKey;
-    }
-
+    // --- Require a valid API key ---
     if (!apiKey) {
-      console.warn('No Gemini API key configured');
-      return res.status(401).json({ error: 'No API Key available.' });
+      return res.status(401).json({ error: 'No API key available. Please sign in or add a private key in Settings.' });
     }
 
-    // Input validation & sanitization
+    // --- Input validation & sanitization ---
     if (!rawInput || typeof rawInput !== 'string') {
       return res.status(400).json({ error: 'Invalid input: raw text is required.' });
     }
@@ -69,7 +123,7 @@ You are a strict JSON parser for educational exams. Convert raw text into a stru
 CRITICAL PARSING RULES:
 1. IGNORE SEMICOLONS: Semicolons (;), colons (:), and line breaks (\\n) DO NOT mean a question has ended. NEVER split a sentence just because it contains a semicolon.
 2. EMOJI FIX: Treat pointing emojis (👉) exactly like the word "Answer:".
-3. THE INDEX LOCK (STRICT ORDER): You MUST build the colB array based strictly on the alphabetical labels (A, B, C, D) in the raw text. 
+3. THE INDEX LOCK (STRICT ORDER): You MUST build the colB array based strictly on the alphabetical labels (A, B, C, D) in the raw text.
    - colB index 0 MUST be the text labeled "A".
    - colB index 1 MUST be the text labeled "B".
    - colB index 2 MUST be the text labeled "C".
@@ -77,7 +131,7 @@ CRITICAL PARSING RULES:
    NEVER rearrange colB to match the answer key. If the key says "1-B", you map "0": 1 in correctMatches. NEVER move the "B" text to index 0.
 4. NO SKIPPING: You must process every single line of the raw text. Even if a question seems redundant, you MUST output a JSON object for it. Never skip a question number (like 7).
 5. NO TEXT MODIFICATION: You MUST use the exact vocabulary provided in the raw text. Never "correct" spellings, technical terms, or names. If the user writes "Lux", do not change it to "Flux". Preserve every word exactly as it appears.
-6. HANDLE MESSY FORMATTING (MERGED & MISSING NUMBERS): You must detect when a new question starts even if the formatting is broken. 
+6. HANDLE MESSY FORMATTING (MERGED & MISSING NUMBERS): You must detect when a new question starts even if the formatting is broken.
 [Format 1 - Merged]: "13. [Text] Ans: False 14. [Text] Ans: True" -> Split into two objects.
 [Format 2 - Missing Number]: "Answer: False \\n A circuit breaker... Answer: True" -> Recognize the text after the first "Answer:" as a completely new question. Automatically assign it the next logical number (e.g., 14) and create a separate JSON object.
 
@@ -94,7 +148,7 @@ EXAMPLE 3: STRIP HEADERS, LETTERS, AND ENFORCE 0-BASED MATCHING
 Ignore table headers (e.g., "Term", "Match", "Cause", "Effect"). Strip the letters (A., B., C.) from Column B. The \`correctMatches\` object MUST use 0-based array integers based on the Answer Key, NEVER letters.
 
 EXAMPLE 4: STRICT ANSWER KEY ENFORCEMENT & THE "3-D" TRAP
-If you see a Matching question where the Term and the Match are on the same line (e.g., "1. Term   A. Match"), DO NOT assume they pair together. You MUST look at the "Answers:" at the bottom of the set. 
+If you see a Matching question where the Term and the Match are on the same line (e.g., "1. Term   A. Match"), DO NOT assume they pair together. You MUST look at the "Answers:" at the bottom of the set.
 CRITICAL: If the key says "3-D", it means "Item 3 maps to Option D". It DOES NOT mean "three-dimensional". You must map index 2 to Option D.
 
 EXAMPLE 5: TRUE/FALSE HANDLING
@@ -115,7 +169,7 @@ A. Reduces liquid sloshing
 B. Protects against bow impact
 Answers: 1 -> B, 2 -> A
 [CORRECT BEHAVIOR]:
-Pull all numbered items into colA. Pull all lettered items into colB EXACTLY as they appear (A first, then B). Map them using the Answer Key. 
+Pull all numbered items into colA. Pull all lettered items into colB EXACTLY as they appear (A first, then B). Map them using the Answer Key.
 [CORRECT JSON OUTPUT]:
 {"type": "matching", "q_num": 1, "question": "Match the following", "colA": [{"text": "Collision Bulkhead"}, {"text": "Swash Bulkhead"}], "colB": [{"text": "Reduces liquid sloshing"}, {"text": "Protects against bow impact"}], "correctMatches": {"0": 1, "1": 0}}
 
@@ -140,19 +194,17 @@ OUTPUT RULES:
 Return ONLY a raw, valid JSON array. Do not wrap in \`\`\`json blockticks. No markdown.
 `;
 
-    console.log("========== PARSE REQUEST STARTED ==========");
-    
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents: [{ 
-            parts: [{ text: systemPrompt + "\n\nRaw Text to Parse:\n" + sanitizedInput }] 
+          contents: [{
+            parts: [{ text: systemPrompt + "\n\nRaw Text to Parse:\n" + sanitizedInput }]
           }],
           generationConfig: {
-            responseMimeType: "application/json", 
+            responseMimeType: "application/json",
             temperature: 0.1
           }
         })
@@ -160,52 +212,37 @@ Return ONLY a raw, valid JSON array. Do not wrap in \`\`\`json blockticks. No ma
     );
 
     if (!response.ok) {
-      let errorMessage = `Google API Error: ${response.status}`;
-      try {
-        const errorData = await response.json();
-        errorMessage = errorData.error?.message || errorMessage;
-      } catch (e) {
-        // Response might not be JSON
+      // Sanitize error — never leak API key details or internal errors
+      if (response.status === 429) {
+        return res.status(429).json({ error: 'AI service is busy. Please wait a minute and try again.' });
       }
-      console.log(`❌ AI Request Failed: ${errorMessage}`);
-      return res.status(response.status === 429 ? 429 : 503).json({ error: errorMessage });
+      return res.status(503).json({ error: 'AI service is temporarily unavailable. Please try again.' });
     }
 
     const data = await response.json();
-    
+
     try {
       // Defensive check for Gemini response structure
       if (!data.candidates || !data.candidates[0] || !data.candidates[0].content || !data.candidates[0].content.parts) {
-        console.error("Unexpected Gemini response structure:", JSON.stringify(data).slice(0, 500));
-        return res.status(500).json({ error: "Invalid AI response format. Please try again." });
+        return res.status(500).json({ error: 'Invalid AI response format. Please try again.' });
       }
 
       const rawAiText = data.candidates[0].content.parts[0].text;
       if (!rawAiText) {
-        console.error("Empty AI response text");
-        return res.status(500).json({ error: "AI returned empty response. Please try again." });
+        return res.status(500).json({ error: 'AI returned empty response. Please try again.' });
       }
 
       const cleanJsonString = rawAiText.replace(/```json/g, "").replace(/```/g, "").trim();
       const parsedContent = JSON.parse(cleanJsonString);
 
-      console.log(`✅ SUCCESS! Parsed ${parsedContent.length} items.`);
       return res.status(200).json(parsedContent);
-      
+
     } catch (parseError) {
-      console.error("JSON PARSE ERROR:", parseError);
-      return res.status(500).json({ error: "AI returned invalid JSON format. Please try again." });
+      return res.status(500).json({ error: 'AI returned invalid JSON format. Please try again.' });
     }
 
   } catch (error) {
-    console.error("FATAL SERVER ERROR:", error);
-    // Handle specific error types
-    if (error.name === 'AbortError' || error.message?.includes('abort')) {
-      return res.status(408).json({ error: "Request timeout. Please try again." });
-    }
-    if (error.message?.includes('fetch') || error.message?.includes('network')) {
-      return res.status(502).json({ error: "Network error. Please check your connection." });
-    }
-    return res.status(500).json({ error: "Internal Server Error" });
+    // Never leak internal error details
+    return res.status(500).json({ error: 'Internal Server Error' });
   }
 }

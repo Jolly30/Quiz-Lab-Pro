@@ -31,7 +31,7 @@ import {
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 // Updated imports for Google Auth
-import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
+import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut, getIdToken } from 'firebase/auth';
 import { getFirestore, doc, setDoc, deleteDoc, collection, onSnapshot, updateDoc, getDoc } from 'firebase/firestore';
 import LiteYouTubeEmbed from 'react-lite-youtube-embed';
 import 'react-lite-youtube-embed/dist/LiteYouTubeEmbed.css';
@@ -194,7 +194,7 @@ try {
   db = getFirestore(app);
   appId = firebaseConfig.projectId;
   isLocalDev = false;
-  console.log("Firebase Connected Successfully!");
+  // Firebase initialized
   
 } catch (error) {
   console.error("Firebase crashed during setup:", error);
@@ -317,12 +317,16 @@ export default function App() {
     }
 
     if (isLocalDev || !auth) {
-      const savedSec = localStorage.getItem(STORAGE_KEY);
-      if (savedSec) setSections(JSON.parse(savedSec));
-      
-      const savedFol = localStorage.getItem(FOLDER_STORAGE_KEY);
-      if (savedFol) setModuleFolders(JSON.parse(savedFol));
-      
+      try {
+        const savedSec = localStorage.getItem(STORAGE_KEY);
+        if (savedSec) setSections(JSON.parse(savedSec));
+
+        const savedFol = localStorage.getItem(FOLDER_STORAGE_KEY);
+        if (savedFol) setModuleFolders(JSON.parse(savedFol));
+      } catch (e) {
+        console.warn('Failed to parse localStorage data:', e.message);
+      }
+
       setLoading(false);
       return;
     }
@@ -351,11 +355,15 @@ export default function App() {
     });
 
     // Load from local storage immediately to prevent flashing while waiting for cloud
-    const savedSec = localStorage.getItem(STORAGE_KEY);
-    if (savedSec) setSections(JSON.parse(savedSec));
-    
-    const savedFol = localStorage.getItem(FOLDER_STORAGE_KEY);
-    if (savedFol) setModuleFolders(JSON.parse(savedFol));
+    try {
+      const savedSec = localStorage.getItem(STORAGE_KEY);
+      if (savedSec) setSections(JSON.parse(savedSec));
+
+      const savedFol = localStorage.getItem(FOLDER_STORAGE_KEY);
+      if (savedFol) setModuleFolders(JSON.parse(savedFol));
+    } catch (e) {
+      console.warn('Failed to parse localStorage data:', e.message);
+    }
 
     return () => unsubscribe();
   }, []);
@@ -625,11 +633,12 @@ export default function App() {
             ? `Parsing batch ${i + 1} of ${chunks.length}... ${attempt > 0 ? `(Retry ${attempt})` : ''}` 
             : `အစု ${i + 1} / ${chunks.length} ကို လုပ်ဆောင်နေပါသည်... ${attempt > 0 ? `(အကြိမ် ${attempt})` : ''}`
           );
-          console.log(`--- EXACT TEXT SENT TO AI (Batch ${i+1}) ---`, JSON.stringify(chunks[i]));
-          // Send uid (server reads key from Firestore) or userCustomKey (legacy fallback)
-          const apiBody = (!isLocalDev && user)
-            ? { rawInput: chunks[i], uid: user.uid }
-            : { rawInput: chunks[i], userCustomKey };
+          // Send Firebase ID token for server-side authentication
+          let idToken = null;
+          if (!isLocalDev && user) {
+            try { idToken = await getIdToken(user); } catch (e) { /* ignore */ }
+          }
+          const apiBody = { rawInput: chunks[i], idToken };
           const response = await fetch('/api/parse', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
