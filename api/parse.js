@@ -17,9 +17,10 @@ export default async function handler(req, res) {
       try {
         const docSnap = await db.doc(`artifacts/quiz-lab-pro/users/${uid}/settings/apiKeys`).get();
         if (docSnap.exists() && docSnap.data().geminiKey) {
-          // Decode the key (XOR + base64)
+          // Decode the key (XOR + base64) using Buffer for Node.js
           const encKey = 'QLP';
-          apiKey = [...atob(docSnap.data().geminiKey)].map((c, i) =>
+          const decoded = Buffer.from(docSnap.data().geminiKey, 'base64').toString('binary');
+          apiKey = [...decoded].map((c, i) =>
             String.fromCharCode(c.charCodeAt(0) ^ encKey.charCodeAt(i % encKey.length))
           ).join('');
         }
