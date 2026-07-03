@@ -152,8 +152,13 @@ Return ONLY a raw, valid JSON array. Do not wrap in \`\`\`json blockticks. No ma
     );
 
     if (!response.ok) {
-      const errorData = await response.json();
-      const errorMessage = errorData.error?.message || `Google API Error: ${response.status}`;
+      let errorMessage = `Google API Error: ${response.status}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error?.message || errorMessage;
+      } catch (e) {
+        // Response might not be JSON
+      }
       console.log(`❌ AI Request Failed: ${errorMessage}`);
       return res.status(response.status === 429 ? 429 : 503).json({ error: errorMessage });
     }
@@ -161,7 +166,18 @@ Return ONLY a raw, valid JSON array. Do not wrap in \`\`\`json blockticks. No ma
     const data = await response.json();
     
     try {
+      // Defensive check for Gemini response structure
+      if (!data.candidates || !data.candidates[0] || !data.candidates[0].content || !data.candidates[0].content.parts) {
+        console.error("Unexpected Gemini response structure:", JSON.stringify(data).slice(0, 500));
+        return res.status(500).json({ error: "Invalid AI response format. Please try again." });
+      }
+
       const rawAiText = data.candidates[0].content.parts[0].text;
+      if (!rawAiText) {
+        console.error("Empty AI response text");
+        return res.status(500).json({ error: "AI returned empty response. Please try again." });
+      }
+
       const cleanJsonString = rawAiText.replace(/```json/g, "").replace(/```/g, "").trim();
       const parsedContent = JSON.parse(cleanJsonString);
 
@@ -175,6 +191,13 @@ Return ONLY a raw, valid JSON array. Do not wrap in \`\`\`json blockticks. No ma
 
   } catch (error) {
     console.error("FATAL SERVER ERROR:", error);
+    // Handle specific error types
+    if (error.name === 'AbortError' || error.message?.includes('abort')) {
+      return res.status(408).json({ error: "Request timeout. Please try again." });
+    }
+    if (error.message?.includes('fetch') || error.message?.includes('network')) {
+      return res.status(502).json({ error: "Network error. Please check your connection." });
+    }
     return res.status(500).json({ error: "Internal Server Error" });
   }
 }
