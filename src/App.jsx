@@ -31,7 +31,7 @@ import {
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 // Updated imports for Google Auth
-import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, getIdToken } from 'firebase/auth';
+import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, getIdToken, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import { getFirestore, doc, setDoc, deleteDoc, collection, onSnapshot, updateDoc, getDoc } from 'firebase/firestore';
 import LiteYouTubeEmbed from 'react-lite-youtube-embed';
 import 'react-lite-youtube-embed/dist/LiteYouTubeEmbed.css';
@@ -191,6 +191,7 @@ try {
 
   app = initializeApp(firebaseConfig);
   auth = getAuth(app);
+  setPersistence(auth, browserLocalPersistence);
   db = getFirestore(app);
   appId = firebaseConfig.projectId;
   isLocalDev = false;
@@ -331,11 +332,14 @@ export default function App() {
       return;
     }
 
-    // Handle redirect result from Google sign-in (mobile fallback)
-    getRedirectResult(auth).catch(err => {
-      if (err.code !== 'auth/no-redirect-result') {
-        console.warn('Redirect result error:', err.message);
+    // Handle redirect result from Google sign-in (mobile)
+    getRedirectResult(auth).then(result => {
+      if (result) {
+        // User signed in via redirect — onAuthStateChanged will fire
+        console.log('Redirect sign-in successful');
       }
+    }).catch(err => {
+      console.warn('Redirect result error:', err.message);
     });
 
     const unsubscribe = onAuthStateChanged(auth, (u) => {
