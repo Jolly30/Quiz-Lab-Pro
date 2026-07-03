@@ -16,7 +16,7 @@ export default async function handler(req, res) {
     if (uid && db) {
       try {
         const docSnap = await db.doc(`artifacts/quiz-lab-pro/users/${uid}/settings/apiKeys`).get();
-        if (docSnap.exists && docSnap.data().geminiKey) {
+        if (docSnap.exists() && docSnap.data().geminiKey) {
           // Decode the key (XOR + base64)
           const encKey = 'QLP';
           apiKey = [...atob(docSnap.data().geminiKey)].map((c, i) =>
@@ -54,7 +54,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Input text is empty after sanitization.' });
     }
 
-  const systemPrompt = `
+    const systemPrompt = `
 You are a strict JSON parser for educational exams. Convert raw text into a structured JSON array.
 
 CRITICAL PARSING RULES:
