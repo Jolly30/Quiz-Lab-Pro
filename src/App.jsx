@@ -31,7 +31,7 @@ import {
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 // Updated imports for Google Auth
-import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut, getIdToken } from 'firebase/auth';
+import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, getIdToken } from 'firebase/auth';
 import { getFirestore, doc, setDoc, deleteDoc, collection, onSnapshot, updateDoc, getDoc } from 'firebase/firestore';
 import LiteYouTubeEmbed from 'react-lite-youtube-embed';
 import 'react-lite-youtube-embed/dist/LiteYouTubeEmbed.css';
@@ -331,6 +331,13 @@ export default function App() {
       return;
     }
 
+    // Handle redirect result from Google sign-in (mobile fallback)
+    getRedirectResult(auth).catch(err => {
+      if (err.code !== 'auth/no-redirect-result') {
+        console.warn('Redirect result error:', err.message);
+      }
+    });
+
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
       setLoading(false);
@@ -421,12 +428,26 @@ export default function App() {
       alert("Firebase is not connected! Check your .env config.");
       return;
     }
+    const provider = new GoogleAuthProvider();
     try {
-      const provider = new GoogleAuthProvider();
+      // Try popup first (works on desktop)
       await signInWithPopup(auth, provider);
-    } catch (error) {
-      alert("Google Login Error: " + error.message);
-      console.error(error);
+    } catch (popupError) {
+      // If popup blocked or fails, fall back to redirect (works on mobile)
+      if (popupError.code === 'auth/popup-blocked' ||
+          popupError.code === 'auth/popup-closed-by-user' ||
+          popupError.code === 'auth/cancelled-popup-request' ||
+          popupError.code === 'auth/internal-error') {
+        try {
+          await signInWithRedirect(auth, provider);
+        } catch (redirectError) {
+          alert("Google Login Error: " + redirectError.message);
+          console.error(redirectError);
+        }
+      } else {
+        alert("Google Login Error: " + popupError.message);
+        console.error(popupError);
+      }
     }
   };
   const handleLogout = async () => {
