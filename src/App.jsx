@@ -448,14 +448,10 @@ export default function App() {
 
     // Sync to Firestore if logged in
     if (!isLocalDev && user && db && appId) {
-      try {
-        setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'apiKeys'), {
-          geminiKey: encodeKey(key),
-          updatedAt: Date.now()
-        });
-      } catch (err) {
-        console.warn('Failed to sync key to Firestore:', err.message);
-      }
+      setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'apiKeys'), {
+        geminiKey: encodeKey(key),
+        updatedAt: Date.now()
+      }).catch(err => console.warn('Failed to sync key to Firestore:', err.message));
     }
   };
 
@@ -465,11 +461,8 @@ export default function App() {
 
     // Remove from Firestore if logged in
     if (!isLocalDev && user && db && appId) {
-      try {
-        deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'apiKeys'));
-      } catch (err) {
-        console.warn('Failed to remove key from Firestore:', err.message);
-      }
+      deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'apiKeys'))
+        .catch(err => console.warn('Failed to remove key from Firestore:', err.message));
     }
   };
 
