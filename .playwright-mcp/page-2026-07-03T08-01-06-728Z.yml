@@ -1,0 +1,50 @@
+- generic [ref=f4e1]:
+  - generic [ref=f4e3]:
+    - navigation [ref=f4e8]:
+      - generic [ref=f4e9]:
+        - generic [ref=f4e10] [cursor=pointer]:
+          - img [ref=f4e12]
+          - heading "QUIZ LAB PRO" [level=1] [ref=f4e14]
+        - button "Add New Module" [ref=f4e16] [cursor=pointer]:
+          - img [ref=f4e17]
+          - generic [ref=f4e18]: Add New Module
+      - generic [ref=f4e19]:
+        - button [ref=f4e20] [cursor=pointer]:
+          - img [ref=f4e21]
+        - button "မြန်မာ" [ref=f4e23] [cursor=pointer]
+        - button [ref=f4e24] [cursor=pointer]:
+          - img [ref=f4e25]
+    - main [ref=f4e28]:
+      - generic [ref=f4e30]:
+        - button "Add New Folder" [ref=f4e31] [cursor=pointer]:
+          - img [ref=f4e32]
+          - text: Add New Folder
+        - paragraph [ref=f4e33]: "Tip: You can create new folders during the import process!"
+      - generic [ref=f4e35]:
+        - button [ref=f4e36] [cursor=pointer]:
+          - img [ref=f4e37]
+        - generic [ref=f4e40]:
+          - img [ref=f4e42]
+          - heading "Settings" [level=3] [ref=f4e45]
+        - generic [ref=f4e46]:
+          - generic [ref=f4e47]:
+            - img [ref=f4e48]
+            - text: Cloud Sync
+          - button "Sign in with Google to Sync Devices" [active] [ref=f4e50] [cursor=pointer]:
+            - img [ref=f4e51]
+            - text: Sign in with Google to Sync Devices
+        - generic [ref=f4e56]:
+          - generic [ref=f4e57]:
+            - img [ref=f4e58]
+            - text: "Video Guide: How to get your Key"
+          - img "How to get Gemini API Key - YouTube video preview" [ref=f4e62] [cursor=pointer]:
+            - button "Watch How to get Gemini API Key" [ref=f4e63]:
+              - generic [ref=f4e64]: Watch
+        - generic [ref=f4e65]:
+          - generic [ref=f4e67]:
+            - img [ref=f4e68]
+            - text: Private API Key
+          - textbox "Paste custom Gemini key..." [ref=f4e72]
+          - paragraph [ref=f4e73]: Bypass community limits. Saved locally on your device. Never shared.
+  - iframe [ref=f4e74]:
+    

@@ -429,24 +429,16 @@ export default function App() {
       return;
     }
     const provider = new GoogleAuthProvider();
-    try {
-      // Try popup first (works on desktop)
-      await signInWithPopup(auth, provider);
-    } catch (popupError) {
-      // If popup blocked or fails, fall back to redirect (works on mobile)
-      if (popupError.code === 'auth/popup-blocked' ||
-          popupError.code === 'auth/popup-closed-by-user' ||
-          popupError.code === 'auth/cancelled-popup-request' ||
-          popupError.code === 'auth/internal-error') {
-        try {
-          await signInWithRedirect(auth, provider);
-        } catch (redirectError) {
-          alert("Google Login Error: " + redirectError.message);
-          console.error(redirectError);
-        }
-      } else {
-        alert("Google Login Error: " + popupError.message);
-        console.error(popupError);
+    // Detect mobile: use redirect (more reliable), popup (faster on desktop)
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    if (isMobile) {
+      await signInWithRedirect(auth, provider);
+    } else {
+      try {
+        await signInWithPopup(auth, provider);
+      } catch (popupError) {
+        // Fallback to redirect if popup fails
+        await signInWithRedirect(auth, provider);
       }
     }
   };
