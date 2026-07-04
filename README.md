@@ -57,19 +57,22 @@ cd Quiz-Lab-Pro
 # 2. Install dependencies
 npm install
 
-# 3. Create .env file
+# 3. Install Vercel CLI (required for local API server)
+npm i -g vercel
+
+# 4. Create .env file
 cp .env.example .env
 
-# 4. Add your Gemini API key to .env
+# 5. Add your Gemini API key to .env
 # Edit .env and set: GEMINI_API_KEY=your_key_here
 
-# 5. Start dev server (must use vercel dev, not vite dev)
+# 6. Start dev server
 vercel dev
 
-# 6. Open http://localhost:3000
+# 7. Open http://localhost:3000
 ```
 
-> **Important:** Always use `vercel dev` instead of `vite dev`. The `/api/parse` serverless function requires Vercel's dev server.
+> **Why Vercel CLI?** The app has a `/api/parse` serverless function that calls the Gemini API. Only `vercel dev` can run this — `vite dev` only serves the frontend without the API.
 
 ---
 
