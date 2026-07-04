@@ -93,10 +93,9 @@ The app runs at `http://localhost:3000`. In local mode:
 
 If you want multi-device sync and Google sign-in:
 
-1. Go to [Firebase Console](https://console.firebase.google.com) and create a project
-2. Enable **Authentication** → Sign-in method → Google
-3. Enable **Cloud Firestore** database
-4. Set Firestore security rules:
+1. **Firebase project:** `quiz-lab-pro` (already configured in `src/App.jsx`)
+2. **Gemini API Key:** Get one free at [aistudio.google.com/apikey](https://aistudio.google.com/apikey) and add to `.env`
+3. **Firestore rules:** Set these in Firebase Console → Firestore → Rules:
    ```
    rules_version = '2';
    service cloud.firestore {
@@ -110,10 +109,10 @@ If you want multi-device sync and Google sign-in:
      }
    }
    ```
-5. Add your domain to **Authentication → Settings → Authorized domains**:
+4. Add your domain to **Authentication → Settings → Authorized domains**:
    - `localhost`
    - `quiz-lab-pro.vercel.app` (your production domain)
-6. Generate a **Service Account key** (JSON) from Project Settings → Service Accounts
+5. Generate a **Service Account key** (JSON) from Project Settings → Service Accounts
 
 ### Deploy to Production
 
