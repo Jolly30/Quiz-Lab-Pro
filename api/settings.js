@@ -6,21 +6,23 @@ async function getUser(req) {
   try {
     const { data } = await supabaseAdmin
       .from('sessions')
-      .select('user_id')
+      .select('user_id, email')
       .eq('token', token)
       .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
       .single();
-    return data?.user_id ?? null;
+    return data ?? null;
   } catch {
     return null;
   }
 }
 
 export default async function handler(req, res) {
-  const userId = await getUser(req);
-  if (!userId) {
+  const user = await getUser(req);
+  if (!user || !user.user_id) {
     return res.status(401).json({ error: 'Unauthorized: valid session required' });
   }
+
+  const userIds = [user.user_id, user.email].filter(Boolean);
 
   try {
     // GET: Retrieve user's saved Gemini key
@@ -28,10 +30,11 @@ export default async function handler(req, res) {
       const { data, error } = await supabaseAdmin
         .from('user_settings')
         .select('gemini_key')
-        .eq('user_id', userId)
+        .in('user_id', userIds)
+        .limit(1)
         .single();
 
-      if (error && error.code !== 'PGRST116') { // PGRST116: no rows found
+      if (error && error.code !== 'PGRST116') {
         console.warn('Fetch user settings error:', error.message);
       }
       return res.status(200).json({ gemini_key: data?.gemini_key || null });
@@ -40,17 +43,14 @@ export default async function handler(req, res) {
     // POST: Save/upsert user's Gemini key
     if (req.method === 'POST') {
       const { gemini_key } = req.body;
-      const { error } = await supabaseAdmin
-        .from('user_settings')
-        .upsert({
-          user_id: userId,
-          gemini_key: gemini_key || null,
-          updated_at: Date.now()
-        }, { onConflict: 'user_id' });
-
-      if (error) {
-        console.error('Error saving user settings:', error);
-        return res.status(500).json({ error: error.message });
+      for (const targetId of userIds) {
+        await supabaseAdmin
+          .from('user_settings')
+          .upsert({
+            user_id: targetId,
+            gemini_key: gemini_key || null,
+            updated_at: Date.now()
+          }, { onConflict: 'user_id' });
       }
       return res.status(200).json({ ok: true });
     }
@@ -60,7 +60,7 @@ export default async function handler(req, res) {
       const { error } = await supabaseAdmin
         .from('user_settings')
         .delete()
-        .eq('user_id', userId);
+        .in('user_id', userIds);
 
       if (error) return res.status(500).json({ error: error.message });
       return res.status(200).json({ ok: true });
