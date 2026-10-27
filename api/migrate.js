@@ -67,7 +67,7 @@ export default async function handler(req, res) {
       privateKey = privateKey.replace(/\\n/g, '\n');
     }
 
-    // 1. Get access token from Google
+    // 1. Get Google OAuth access token
     const jwt = createGoogleServiceJwt(clientEmail, privateKey);
     const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
@@ -88,30 +88,7 @@ export default async function handler(req, res) {
       'Content-Type': 'application/json'
     };
 
-    // 2. Map Firebase UIDs to Emails via Identity Toolkit
-    const uidToEmailMap = {};
-    try {
-      let nextPageToken = undefined;
-      do {
-        const url = `https://identitytoolkit.googleapis.com/v1/projects/${projectId}/accounts:batchGet?maxResults=1000${nextPageToken ? `&nextPageToken=${nextPageToken}` : ''}`;
-        const usersRes = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
-        if (usersRes.ok) {
-          const usersData = await usersRes.json();
-          (usersData.users || []).forEach(u => {
-            if (u.localId && u.email) {
-              uidToEmailMap[u.localId] = u.email.toLowerCase();
-            }
-          });
-          nextPageToken = usersData.nextPageToken;
-        } else {
-          break;
-        }
-      } while (nextPageToken);
-    } catch (authErr) {
-      console.warn('Identity Toolkit warning:', authErr.message);
-    }
-
-    // 3. Collection Group Query: Find all "modules" collections in Firestore across all users!
+    // 2. Query Firestore Collection Group: Find all "modules" collections
     const queryUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery`;
     const runQueryRes = await fetch(queryUrl, {
       method: 'POST',
@@ -128,20 +105,20 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'Firestore runQuery error: ' + JSON.stringify(queryData) });
     }
 
-    let totalMigrated = 0;
+    // 3. Batch prepare all modules
+    const rowsToUpsert = [];
     const userSummary = {};
 
-    for (const item of queryData) {
+    for (const item of (Array.isArray(queryData) ? queryData : [])) {
       if (!item.document || !item.document.name) continue;
 
       const docName = item.document.name;
-      // Extract uid and docId from path: /users/{uid}/modules/{docId}
+      // Match path: /users/{uid}/modules/{docId}
       const match = docName.match(/\/users\/([^/]+)\/modules\/([^/]+)/);
       if (!match) continue;
 
       const uid = match[1];
       const docId = match[2];
-      const email = uidToEmailMap[uid] || null;
 
       const docData = parseFirestoreDoc(item.document.fields);
       const displayName = docData.displayName || docData.name || docId;
@@ -152,56 +129,28 @@ export default async function handler(req, res) {
       const folderName = docData.folderName || 'Saved Modules';
       const updatedAt = docData.updatedAt || Date.now();
 
-      // Upsert module for both the Firebase UID AND the Email
-      const targetIds = [email, uid].filter(Boolean);
-      for (const tId of targetIds) {
-        await supabaseAdmin.from('modules').upsert({
-          user_id: tId,
-          display_name: displayName,
-          content: content,
-          folder_name: folderName,
-          updated_at: updatedAt
-        }, { onConflict: 'user_id,display_name' });
-      }
+      rowsToUpsert.push({
+        user_id: uid,
+        display_name: displayName,
+        content: content,
+        folder_name: folderName,
+        updated_at: updatedAt
+      });
 
-      totalMigrated++;
-      userSummary[email || uid] = (userSummary[email || uid] || 0) + 1;
+      userSummary[uid] = (userSummary[uid] || 0) + 1;
     }
 
-    // 4. Also migrate settings/apiKeys
-    try {
-      const settingsQueryRes = await fetch(queryUrl, {
-        method: 'POST',
-        headers: authHeaders,
-        body: JSON.stringify({
-          structuredQuery: {
-            from: [{ collectionId: 'settings', allDescendants: true }]
-          }
-        })
-      });
-      if (settingsQueryRes.ok) {
-        const settingsData = await settingsQueryRes.json();
-        for (const item of settingsData) {
-          if (!item.document) continue;
-          const match = item.document.name.match(/\/users\/([^/]+)\/settings\/apiKeys/);
-          if (!match) continue;
-          const uid = match[1];
-          const email = uidToEmailMap[uid] || null;
-          const sParsed = parseFirestoreDoc(item.document.fields);
-          if (sParsed.geminiKey) {
-            const targets = [uid, email].filter(Boolean);
-            for (const tId of targets) {
-              await supabaseAdmin.from('user_settings').upsert({
-                user_id: tId,
-                gemini_key: sParsed.geminiKey,
-                updated_at: Date.now()
-              }, { onConflict: 'user_id' });
-            }
-          }
-        }
+    // 4. Fast batch upsert into Supabase (chunks of 50 to finish in seconds)
+    let totalMigrated = 0;
+    const chunkSize = 50;
+    for (let i = 0; i < rowsToUpsert.length; i += chunkSize) {
+      const chunk = rowsToUpsert.slice(i, i + chunkSize);
+      const { error } = await supabaseAdmin.from('modules').upsert(chunk, { onConflict: 'user_id,display_name' });
+      if (error) {
+        console.warn('Batch upsert error:', error.message);
+      } else {
+        totalMigrated += chunk.length;
       }
-    } catch (e) {
-      console.warn('Settings migration warning:', e.message);
     }
 
     return res.status(200).json({
