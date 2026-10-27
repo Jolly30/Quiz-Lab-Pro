@@ -404,10 +404,12 @@ export default function App() {
     }
     localStorage.removeItem(SESSION_TOKEN_KEY);
     setUser(null);
+    setUserCustomKey('');
     setSections({});
     setModuleFolders({});
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(FOLDER_STORAGE_KEY);
+    localStorage.removeItem(API_KEY_STORAGE);
   };
 
   const saveCustomKey = (key) => {
