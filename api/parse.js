@@ -1,4 +1,5 @@
 /* global process */
+import { supabaseAdmin } from './supabase-admin.js';
 export const maxDuration = 60; // Vercel Node.js timeout allowance
 
 // --- Simple in-memory rate limiter (per-deployment, per-IP) ---
@@ -30,7 +31,7 @@ setInterval(() => {
 function setCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Origin', process.env.ALLOWED_ORIGIN || '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Session-Token');
 }
 
 export default async function handler(req, res) {
@@ -51,49 +52,50 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { rawInput, idToken } = req.body;
+    const { rawInput, userCustomKey, uid, sessionToken } = req.body;
+    const token = req.headers['x-session-token'] || sessionToken;
 
-    // --- Resolve API key from server env ---
+    // Resolve API key: Supabase user key → client custom key → server env
     let apiKey = process.env.GEMINI_API_KEY;
 
-    // --- Dynamically import firebase-admin ---
-    let db = null;
-    let auth = null;
-    try {
-      const firebaseAdmin = await import('./firebase-admin.js');
-      db = firebaseAdmin.db;
-      auth = firebaseAdmin.auth;
-    } catch (importErr) {
-      // Firebase Admin not available — continue with env key only
-    }
-
-    // --- Verify the user's identity with Firebase Admin ---
-    let uid = null;
-    if (idToken && auth) {
+    let targetUserId = uid;
+    if (!targetUserId && token && supabaseAdmin) {
       try {
-        const decodedToken = await auth.verifyIdToken(idToken);
-        uid = decodedToken.uid;
+        const { data: session } = await supabaseAdmin
+          .from('sessions')
+          .select('user_id')
+          .eq('token', token)
+          .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
+          .single();
+        targetUserId = session?.user_id;
       } catch (err) {
-        console.warn('Token verification failed:', err.message);
-        return res.status(401).json({ error: 'Invalid or expired authentication. Please sign in again.' });
+        console.warn('Session lookup failed in parse.js:', err.message);
       }
     }
 
-    // --- Fetch user's private API key from Firestore (if authenticated) ---
-    if (uid && db) {
+    if (targetUserId && supabaseAdmin) {
       try {
-        const docSnap = await db.doc(`artifacts/quiz-lab-pro/users/${uid}/settings/apiKeys`).get();
-        if (docSnap.exists() && docSnap.data().geminiKey) {
+        const { data } = await supabaseAdmin
+          .from('user_settings')
+          .select('gemini_key')
+          .eq('user_id', targetUserId)
+          .single();
+        if (data?.gemini_key) {
           // Decode the key (XOR + base64) using Buffer for Node.js
           const encKey = 'QLP';
-          const decoded = Buffer.from(docSnap.data().geminiKey, 'base64').toString('binary');
+          const decoded = Buffer.from(data.gemini_key, 'base64').toString('binary');
           apiKey = [...decoded].map((c, i) =>
             String.fromCharCode(c.charCodeAt(0) ^ encKey.charCodeAt(i % encKey.length))
           ).join('');
         }
       } catch (err) {
-        console.warn('Firestore key lookup failed:', err.message);
+        console.warn('Supabase key lookup failed:', err.message);
       }
+    }
+
+    // Fallback to client-sent key if server key not found
+    if (!apiKey && userCustomKey) {
+      apiKey = userCustomKey;
     }
 
     // --- Require a valid API key ---
@@ -212,7 +214,6 @@ Return ONLY a raw, valid JSON array. Do not wrap in \`\`\`json blockticks. No ma
     );
 
     if (!response.ok) {
-      // Sanitize error — never leak API key details or internal errors
       if (response.status === 429) {
         return res.status(429).json({ error: 'AI service is busy. Please wait a minute and try again.' });
       }
@@ -222,7 +223,6 @@ Return ONLY a raw, valid JSON array. Do not wrap in \`\`\`json blockticks. No ma
     const data = await response.json();
 
     try {
-      // Defensive check for Gemini response structure
       if (!data.candidates || !data.candidates[0] || !data.candidates[0].content || !data.candidates[0].content.parts) {
         return res.status(500).json({ error: 'Invalid AI response format. Please try again.' });
       }
@@ -242,7 +242,6 @@ Return ONLY a raw, valid JSON array. Do not wrap in \`\`\`json blockticks. No ma
     }
 
   } catch (error) {
-    // Never leak internal error details
     return res.status(500).json({ error: 'Internal Server Error' });
   }
 }

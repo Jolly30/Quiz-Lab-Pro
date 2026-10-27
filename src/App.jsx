@@ -29,12 +29,16 @@ import {
   Check,
   Cloud
 } from 'lucide-react';
-import { initializeApp } from 'firebase/app';
-// Updated imports for Google Auth
-import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, getIdToken, setPersistence, browserLocalPersistence } from 'firebase/auth';
-import { getFirestore, doc, setDoc, deleteDoc, collection, onSnapshot, updateDoc, getDoc } from 'firebase/firestore';
 import LiteYouTubeEmbed from 'react-lite-youtube-embed';
 import 'react-lite-youtube-embed/dist/LiteYouTubeEmbed.css';
+
+// --- SESSION & API PROXY HELPERS ---
+const SESSION_TOKEN_KEY = 'qlp_session_token';
+const getToken = () => localStorage.getItem(SESSION_TOKEN_KEY);
+const apiHeaders = () => ({
+  'Content-Type': 'application/json',
+  ...(getToken() ? { 'X-Session-Token': getToken() } : {})
+});
 
 const t = {
   en: {
@@ -170,38 +174,7 @@ const t = {
 };
 
 
-// --- CRASH-PROOF FIREBASE SETUP ---
-let isLocalDev = true;
-let app = null;
-let auth = null;
-let db = null;
-let appId = 'default-app-id';
 
-try {
-  // Spelling fixed!
-  const firebaseConfig = {
-    apiKey: "AIzaSyCLurB3lXjxtxNZl1cBhagJdBnT6y7rM1E",
-    authDomain: "quiz-lab-pro.firebaseapp.com",
-    projectId: "quiz-lab-pro",
-    storageBucket: "quiz-lab-pro.firebasestorage.app",
-    messagingSenderId: "693025508468",
-    appId: "1:693025508468:web:878a9e0fa697eb13825521",
-    measurementId: "G-TVNG9GQFR4"
-  };
-
-  app = initializeApp(firebaseConfig);
-  auth = getAuth(app);
-  setPersistence(auth, browserLocalPersistence);
-  db = getFirestore(app);
-  appId = firebaseConfig.projectId;
-  isLocalDev = false;
-  // Firebase initialized
-  
-} catch (error) {
-  console.error("Firebase crashed during setup:", error);
-}
-// ----------------------------------
-// ----------------------------------
 const STORAGE_KEY = 'meo_prep_pro_v17_stable';
 const FOLDER_STORAGE_KEY = 'meo_prep_pro_folders_v1';
 const API_KEY_STORAGE = 'user_gemini_key';
@@ -317,167 +290,137 @@ export default function App() {
       if (!decoded) localStorage.setItem(API_KEY_STORAGE, encodeKey(savedKey));
     }
 
-    if (isLocalDev || !auth) {
-      try {
-        const savedSec = localStorage.getItem(STORAGE_KEY);
-        if (savedSec) setSections(JSON.parse(savedSec));
-
-        const savedFol = localStorage.getItem(FOLDER_STORAGE_KEY);
-        if (savedFol) setModuleFolders(JSON.parse(savedFol));
-      } catch (e) {
-        console.warn('Failed to parse localStorage data:', e.message);
+    // Check if redirected from Google OAuth with session_token or auth_error
+    const hash = window.location.hash;
+    if (hash && hash.includes('session_token=')) {
+      const match = hash.match(/session_token=([^&]+)/);
+      if (match && match[1]) {
+        localStorage.setItem(SESSION_TOKEN_KEY, match[1]);
       }
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    } else if (hash && hash.includes('auth_error=')) {
+      const match = hash.match(/auth_error=([^&]+)/);
+      if (match && match[1]) {
+        alert('Login notification: ' + decodeURIComponent(match[1]));
+      }
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
 
+    // Load from localStorage immediately to prevent UI flash
+    const savedSec = localStorage.getItem(STORAGE_KEY);
+    if (savedSec) {
+      try { setSections(JSON.parse(savedSec)); } catch (e) { console.warn(e); }
+    }
+    const savedFol = localStorage.getItem(FOLDER_STORAGE_KEY);
+    if (savedFol) {
+      try { setModuleFolders(JSON.parse(savedFol)); } catch (e) { console.warn(e); }
+    }
+
+    const currentToken = getToken();
+    if (!currentToken) {
+      setUser(null);
       setLoading(false);
       return;
     }
 
-    // Handle redirect result from Google sign-in (mobile)
-    getRedirectResult(auth).catch(err => {
-      // Silently ignore — normal if not coming from redirect
-    });
+    // Verify session with server proxy
+    fetch('/api/auth/session', { headers: apiHeaders() })
+      .then(res => {
+        if (!res.ok) throw new Error('Session invalid');
+        return res.json();
+      })
+      .then(data => {
+        setUser(data.user);
+        setLoading(false);
 
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
-      setUser(u);
-      setLoading(false);
-
-      // Fetch user's Gemini key from Firestore on login
-      if (u && db && appId) {
-        getDoc(doc(db, 'artifacts', appId, 'users', u.uid, 'settings', 'apiKeys'))
-          .then(snap => {
-            if (snap.exists()) {
-              const data = snap.data();
-              if (data.geminiKey) {
-                const decoded = decodeKey(data.geminiKey);
-                if (decoded) {
-                  setUserCustomKey(decoded);
-                  localStorage.setItem(API_KEY_STORAGE, data.geminiKey);
-                }
+        // Fetch user Gemini key from server
+        fetch('/api/settings', { headers: apiHeaders() })
+          .then(r => r.json())
+          .then(sData => {
+            if (sData?.gemini_key) {
+              const decoded = decodeKey(sData.gemini_key);
+              if (decoded) {
+                setUserCustomKey(decoded);
+                localStorage.setItem(API_KEY_STORAGE, sData.gemini_key);
               }
             }
           })
-          .catch(err => console.warn('Failed to fetch key from Firestore:', err.message));
-      }
-    });
-
-    // Load from local storage immediately to prevent flashing while waiting for cloud
-    try {
-      const savedSec = localStorage.getItem(STORAGE_KEY);
-      if (savedSec) setSections(JSON.parse(savedSec));
-
-      const savedFol = localStorage.getItem(FOLDER_STORAGE_KEY);
-      if (savedFol) setModuleFolders(JSON.parse(savedFol));
-    } catch (e) {
-      console.warn('Failed to parse localStorage data:', e.message);
-    }
-
-    return () => unsubscribe();
+          .catch(() => {});
+      })
+      .catch(() => {
+        localStorage.removeItem(SESSION_TOKEN_KEY);
+        setUser(null);
+        setLoading(false);
+      });
   }, []);
 
-  // Sync to Cloud automatically if logged in
+  // Sync to Cloud automatically if logged in via Vercel proxy
   useEffect(() => {
-    if (isLocalDev || !user || !db || !appId) return;
+    if (!user) return;
 
-    const collectionRef = collection(db, 'artifacts', appId, 'users', user.uid, 'modules');
-    if (unsubscribeRef.current) unsubscribeRef.current();
-    
-    unsubscribeRef.current = onSnapshot(collectionRef, (snap) => {
-      const newData = {};
-      const newFolders = {};
-      snap.forEach(docSnap => {
-        const docData = docSnap.data();
-        let parsedQs = [];
-        if (docData.content) {
-          try { parsedQs = JSON.parse(docData.content); } catch(e) {}
-        } else if (docData.questionsData) {
-          try { parsedQs = JSON.parse(docData.questionsData); } catch(e) {}
-        } else if (docData.questions) {
-          parsedQs = docData.questions;
-        }
-        
-        const mName = docData.displayName || docSnap.id;
-        newData[mName] = parsedQs;
-        newFolders[mName] = docData.folderName || 'Saved Modules';
-      });
-      
-      if (Object.keys(newData).length > 0) {
-        // 🚨 THE FIX: Direct replacement (No more ...prev merges)
+    const loadModules = async () => {
+      try {
+        const res = await fetch('/api/modules', { headers: apiHeaders() });
+        if (!res.ok) return;
+        const data = await res.json();
+
+        const newData = {};
+        const newFolders = {};
+        (data || []).forEach(row => {
+          let parsedQs = [];
+          try {
+            parsedQs = typeof row.content === 'string' ? JSON.parse(row.content) : (row.content || []);
+          } catch(e) {}
+          newData[row.display_name] = parsedQs;
+          newFolders[row.display_name] = row.folder_name || 'Saved Modules';
+        });
+
+        // Direct replacement — no stale merges
         setSections(newData);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(newData));
-
         setModuleFolders(newFolders);
         localStorage.setItem(FOLDER_STORAGE_KEY, JSON.stringify(newFolders));
-      } else {
-        // Optional: Clear out local state if the database is completely empty
-        setSections({});
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({}));
-        setModuleFolders({});
-        localStorage.setItem(FOLDER_STORAGE_KEY, JSON.stringify({}));
+      } catch (err) {
+        console.warn('Failed to load modules from server:', err);
       }
-    });
-
-    return () => {
-      if (unsubscribeRef.current) unsubscribeRef.current();
     };
+
+    loadModules();
+
+    // Cross-device sync: poll every 30 seconds
+    const interval = setInterval(loadModules, 30000);
+    return () => clearInterval(interval);
   }, [user]);
 
- 
-  const handleGoogleLogin = async () => {
-    if (!auth) {
-      alert("Firebase is not connected! Check your .env config.");
-      return;
-    }
-    const provider = new GoogleAuthProvider();
-    // PWA / Home Screen: MUST use popup (redirect loses state in sandbox)
-    // Mobile browser: use redirect (popup gets blocked)
-    // Desktop: use popup (faster)
-    const isPWA = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
-    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-
-    if (isPWA) {
-      // PWA always uses popup — redirect breaks in standalone sandbox
-      try {
-        await signInWithPopup(auth, provider);
-      } catch (err) {
-        console.error('PWA login error:', err.code, err.message);
-        alert("Google Login Error: " + err.message);
-      }
-    } else if (isMobile) {
-      await signInWithRedirect(auth, provider);
-    } else {
-      try {
-        await signInWithPopup(auth, provider);
-      } catch (popupError) {
-        // Fallback to redirect if popup fails
-        await signInWithRedirect(auth, provider);
-      }
-    }
+  const handleGoogleLogin = () => {
+    window.location.href = '/api/auth/init';
   };
+
   const handleLogout = async () => {
-    if (!auth) return;
     try {
-      await signOut(auth);
-      setSections({});
-      setModuleFolders({});
-      setUserCustomKey('');
-      localStorage.removeItem(STORAGE_KEY);
-      localStorage.removeItem(FOLDER_STORAGE_KEY);
-      localStorage.removeItem(API_KEY_STORAGE);
+      await fetch('/api/auth/logout', { method: 'POST', headers: apiHeaders() });
     } catch (error) {
-      console.error("Logout failed:", error);
+      console.warn('Logout API failed:', error);
     }
+    localStorage.removeItem(SESSION_TOKEN_KEY);
+    setUser(null);
+    setSections({});
+    setModuleFolders({});
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(FOLDER_STORAGE_KEY);
   };
 
   const saveCustomKey = (key) => {
     setUserCustomKey(key);
     localStorage.setItem(API_KEY_STORAGE, encodeKey(key));
 
-    // Sync to Firestore if logged in
-    if (!isLocalDev && user && db && appId) {
-      setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'apiKeys'), {
-        geminiKey: encodeKey(key),
-        updatedAt: Date.now()
-      }).catch(err => console.warn('Failed to sync key to Firestore:', err.message));
+    // Sync to server if logged in
+    if (user && getToken()) {
+      fetch('/api/settings', {
+        method: 'POST',
+        headers: apiHeaders(),
+        body: JSON.stringify({ gemini_key: encodeKey(key) })
+      }).catch(err => console.warn('Failed to sync key to server:', err));
     }
   };
 
@@ -485,10 +428,12 @@ export default function App() {
     setUserCustomKey('');
     localStorage.removeItem(API_KEY_STORAGE);
 
-    // Remove from Firestore if logged in
-    if (!isLocalDev && user && db && appId) {
-      deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'apiKeys'))
-        .catch(err => console.warn('Failed to remove key from Firestore:', err.message));
+    // Remove from server if logged in
+    if (user && getToken()) {
+      fetch('/api/settings', {
+        method: 'DELETE',
+        headers: apiHeaders()
+      }).catch(err => console.warn('Failed to remove key from server:', err));
     }
   };
 
@@ -534,25 +479,13 @@ export default function App() {
     
     setEditingFolder(null);
 
-    // --- THE FIX: SMART FIREBASE UPDATING ---
-    if (!isLocalDev && user && db && appId) {
-       try {
-          await Promise.all(modulesToUpdate.map(async (mod) => {
-             const safeDocId = getSafeDocId(mod);
-             const docRefSafe = doc(db, 'artifacts', appId, 'users', user.uid, 'modules', safeDocId);
-             const docRefRaw = doc(db, 'artifacts', appId, 'users', user.uid, 'modules', mod);
-             
-             try {
-                 // updateDoc strictly EDITS. It will never create a 0-question ghost!
-                 await updateDoc(docRefSafe, { folderName: trimmedNew });
-             } catch {
-                 try {
-                     // Fallback: If the module was saved before the ID system changed, update the raw name.
-                     await updateDoc(docRefRaw, { folderName: trimmedNew });
-                 } catch (e) { console.warn('Folder rename fallback failed:', e.message); }
-             }
-          }));
-       } catch(err){ console.error('Folder rename sync failed:', err.message); }
+    // Sync folder rename to server
+    if (user && getToken()) {
+      fetch('/api/modules', {
+        method: 'PUT',
+        headers: apiHeaders(),
+        body: JSON.stringify({ folder_name: trimmedNew, modules: modulesToUpdate })
+      }).catch(err => console.error('Folder rename sync failed:', err));
     }
   };
   const handleRenameModule = async (oldName, newName) => {
@@ -578,21 +511,17 @@ export default function App() {
 
     setEditingModule(null);
 
-    if (!isLocalDev && user && db && appId) {
-      try {
-        const oldSafeId = getSafeDocId(oldName);
-        const newSafeId = getSafeDocId(trimmedNew);
-        const contentToSave = sections[oldName];
-        const folderToSave = moduleFolders[oldName] || "Saved Modules";
-
-        await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'modules', newSafeId), {
-          displayName: trimmedNew,
-          content: JSON.stringify(contentToSave),
-          folderName: folderToSave,
-          updatedAt: Date.now()
-        });
-        await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'modules', oldSafeId));
-      } catch(e){ console.error('Module rename sync failed:', e.message); }
+    if (user && getToken()) {
+      fetch('/api/modules', {
+        method: 'PUT',
+        headers: apiHeaders(),
+        body: JSON.stringify({
+          old_name: oldName,
+          new_name: trimmedNew,
+          content: sections[oldName],
+          folder_name: moduleFolders[oldName] || 'Saved Modules'
+        })
+      }).catch(err => console.error('Module rename sync failed:', err));
     }
   };
 
@@ -652,15 +581,14 @@ export default function App() {
             ? `Parsing batch ${i + 1} of ${chunks.length}... ${attempt > 0 ? `(Retry ${attempt})` : ''}` 
             : `အစု ${i + 1} / ${chunks.length} ကို လုပ်ဆောင်နေပါသည်... ${attempt > 0 ? `(အကြိမ် ${attempt})` : ''}`
           );
-          // Send Firebase ID token for server-side authentication
-          let idToken = null;
-          if (!isLocalDev && user) {
-            try { idToken = await getIdToken(user); } catch (e) { /* ignore */ }
-          }
-          const apiBody = { rawInput: chunks[i], idToken };
+          console.log(`--- EXACT TEXT SENT TO AI (Batch ${i+1}) ---`, JSON.stringify(chunks[i]));
+          // Send sessionToken/uid (server reads key from Supabase) or userCustomKey
+          const apiBody = user
+            ? { rawInput: chunks[i], uid: user.id || user.uid, sessionToken: getToken() }
+            : { rawInput: chunks[i], userCustomKey };
           const response = await fetch('/api/parse', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: apiHeaders(),
             body: JSON.stringify(apiBody),
             signal: signal
           });
@@ -731,14 +659,16 @@ export default function App() {
         }
       } 
 
-      if (!isLocalDev && user && db && appId) {
-        const safeId = getSafeDocId(name);
-        await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'modules', safeId), {
-          displayName: name,
-          content: JSON.stringify(allQuestionsAccumulator),
-          folderName: folderToSave,
-          updatedAt: Date.now()
-        });
+      if (user && getToken()) {
+        fetch('/api/modules', {
+          method: 'POST',
+          headers: apiHeaders(),
+          body: JSON.stringify({
+            display_name: name,
+            content: allQuestionsAccumulator,
+            folder_name: folderToSave
+          })
+        }).catch(err => console.error('Module save sync failed:', err));
       }
 
       setIsProcessing(false);
@@ -791,11 +721,12 @@ export default function App() {
 
     setShowConfirm(null);
 
-    if (!isLocalDev && user && db && appId) {
-      try {
-        const safeDocId = getSafeDocId(name);
-        await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'modules', safeDocId));
-      } catch (err) { console.error('Module delete sync failed:', err.message); }
+    if (user && getToken()) {
+      fetch('/api/modules', {
+        method: 'DELETE',
+        headers: apiHeaders(),
+        body: JSON.stringify({ display_name: name })
+      }).catch(err => console.error('Module delete sync failed:', err));
     }
   };
 
@@ -822,13 +753,12 @@ export default function App() {
     
     setShowFolderDeleteConfirm(null);
 
-    if (!isLocalDev && user && db && appId) {
-      try {
-        await Promise.all(modulesToDelete.map(mod => {
-          const safeDocId = getSafeDocId(mod);
-          return deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'modules', safeDocId));
-        }));
-      } catch (err) { console.error('Folder delete sync failed:', err.message); }
+    if (user && getToken()) {
+      fetch('/api/modules', {
+        method: 'DELETE',
+        headers: apiHeaders(),
+        body: JSON.stringify({ modules: modulesToDelete })
+      }).catch(err => console.error('Folder delete sync failed:', err));
     }
   };
 
