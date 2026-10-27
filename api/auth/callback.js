@@ -60,7 +60,8 @@ export default async function handler(req, res) {
 
     if (sessionError || !session?.token) {
       console.error('Failed to create session in Supabase:', sessionError);
-      return res.redirect(302, `${origin}/#auth_error=session_creation_failed`);
+      const errMsg = sessionError?.message || sessionError?.details || 'session_creation_failed';
+      return res.redirect(302, `${origin}/#auth_error=${encodeURIComponent(errMsg)}`);
     }
 
     // 4. Redirect to application frontend with session token in hash fragment
