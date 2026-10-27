@@ -1,121 +1,186 @@
 /* global process */
+import crypto from 'crypto';
 import { supabaseAdmin } from './supabase-admin.js';
 
 export const maxDuration = 60; // 60s Vercel timeout allowance
+
+function createGoogleServiceJwt(clientEmail, privateKey) {
+  const header = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
+  const now = Math.floor(Date.now() / 1000);
+  const claims = Buffer.from(JSON.stringify({
+    iss: clientEmail,
+    scope: 'https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/identitytoolkit https://www.googleapis.com/auth/cloud-platform',
+    aud: 'https://oauth2.googleapis.com/token',
+    exp: now + 3600,
+    iat: now
+  })).toString('base64url');
+
+  const sign = crypto.createSign('RSA-SHA256');
+  sign.update(`${header}.${claims}`);
+  const signature = sign.sign(privateKey, 'base64url');
+  return `${header}.${claims}.${signature}`;
+}
+
+function parseFirestoreValue(val) {
+  if (!val) return null;
+  if ('stringValue' in val) return val.stringValue;
+  if ('integerValue' in val) return parseInt(val.integerValue, 10);
+  if ('doubleValue' in val) return parseFloat(val.doubleValue);
+  if ('booleanValue' in val) return val.booleanValue;
+  if ('arrayValue' in val) return (val.arrayValue?.values || []).map(parseFirestoreValue);
+  if ('mapValue' in val) return parseFirestoreDoc(val.mapValue?.fields || {});
+  return null;
+}
+
+function parseFirestoreDoc(fields) {
+  const result = {};
+  for (const [k, v] of Object.entries(fields || {})) {
+    result[k] = parseFirestoreValue(v);
+  }
+  return result;
+}
 
 export default async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
 
   try {
-    // 1. Dynamic import of firebase-admin for Vercel Node.js ESM compatibility
-    const { initializeApp, cert, getApps } = await import('firebase-admin/app');
-    const { getFirestore } = await import('firebase-admin/firestore');
-    const { getAuth } = await import('firebase-admin/auth');
-
-    // 2. Parse service account credentials safely
+    // 1. Parse FIREBASE_SERVICE_ACCOUNT credentials
     const saRaw = process.env.FIREBASE_SERVICE_ACCOUNT;
     if (!saRaw) {
-      return res.status(500).json({ error: 'FIREBASE_SERVICE_ACCOUNT environment variable is missing on Vercel.' });
+      return res.status(500).json({ error: 'FIREBASE_SERVICE_ACCOUNT is missing on Vercel.' });
     }
 
-    let serviceAccount;
+    let sa;
     try {
       if (saRaw.trim().startsWith('{')) {
-        serviceAccount = JSON.parse(saRaw.trim());
+        sa = JSON.parse(saRaw.trim());
       } else {
-        const decoded = Buffer.from(saRaw.trim(), 'base64').toString('utf8');
-        serviceAccount = JSON.parse(decoded);
+        sa = JSON.parse(Buffer.from(saRaw.trim(), 'base64').toString('utf8'));
       }
-    } catch (parseErr) {
-      return res.status(500).json({ error: 'Failed to parse FIREBASE_SERVICE_ACCOUNT JSON: ' + parseErr.message });
+    } catch (e) {
+      return res.status(500).json({ error: 'Failed to parse FIREBASE_SERVICE_ACCOUNT: ' + e.message });
     }
 
-    if (serviceAccount.private_key) {
-      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+    const projectId = sa.project_id || sa.projectId;
+    const clientEmail = sa.client_email || sa.clientEmail;
+    let privateKey = sa.private_key || sa.privateKey;
+    if (privateKey) {
+      privateKey = privateKey.replace(/\\n/g, '\n');
     }
 
-    if (!getApps().length) {
-      initializeApp({ credential: cert(serviceAccount) });
+    // 2. Exchange JWT for Google OAuth2 access token
+    const jwt = createGoogleServiceJwt(clientEmail, privateKey);
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+        assertion: jwt
+      })
+    });
+
+    const tokenJson = await tokenRes.json();
+    if (!tokenRes.ok || !tokenJson.access_token) {
+      return res.status(500).json({ error: 'Failed to obtain Google token: ' + JSON.stringify(tokenJson) });
     }
+    const accessToken = tokenJson.access_token;
+    const authHeader = { Authorization: `Bearer ${accessToken}` };
 
-    const auth = getAuth();
-    const db = getFirestore();
-
-    // 3. Map Firebase user IDs to their emails
+    // 3. Map Firebase UIDs to Emails via Identity Toolkit API
     const uidToEmailMap = {};
     try {
-      let pageToken = undefined;
+      let nextPageToken = undefined;
       do {
-        const listUsersResult = await auth.listUsers(1000, pageToken);
-        listUsersResult.users.forEach((userRecord) => {
-          if (userRecord.email) {
-            uidToEmailMap[userRecord.uid] = userRecord.email.toLowerCase();
-          }
-        });
-        pageToken = listUsersResult.pageToken;
-      } while (pageToken);
+        const url = `https://identitytoolkit.googleapis.com/v1/projects/${projectId}/accounts:batchGet?maxResults=1000${nextPageToken ? `&nextPageToken=${nextPageToken}` : ''}`;
+        const usersRes = await fetch(url, { headers: authHeader });
+        if (usersRes.ok) {
+          const usersData = await usersRes.json();
+          (usersData.users || []).forEach(u => {
+            if (u.localId && u.email) {
+              uidToEmailMap[u.localId] = u.email.toLowerCase();
+            }
+          });
+          nextPageToken = usersData.nextPageToken;
+        } else {
+          break;
+        }
+      } while (nextPageToken);
     } catch (authErr) {
-      console.warn('Firebase Auth listUsers warning:', authErr.message);
+      console.warn('Identity Toolkit batchGet warning:', authErr.message);
     }
 
-    // 4. Fetch all user documents under artifacts/quiz-lab-pro/users
-    const usersColRef = db.collection('artifacts').doc('quiz-lab-pro').collection('users');
-    const userDocs = await usersColRef.listDocuments();
+    // 4. List all users under artifacts/quiz-lab-pro/users from Firestore REST API
+    const usersUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/artifacts/quiz-lab-pro/users?pageSize=1000`;
+    const usersRes = await fetch(usersUrl, { headers: authHeader });
+    const usersData = await usersRes.json();
 
+    const userDocs = usersData.documents || [];
     const results = [];
     let totalModulesCount = 0;
 
-    for (const userDoc of userDocs) {
-      const uid = userDoc.id;
+    for (const uDoc of userDocs) {
+      // Document name looks like: projects/.../documents/artifacts/quiz-lab-pro/users/{uid}
+      const parts = uDoc.name.split('/');
+      const uid = parts[parts.length - 1];
       const email = uidToEmailMap[uid] || null;
 
-      // Migrate user's private Gemini API key if present
+      // Migrate user settings / Gemini keys if present
       try {
-        const apiKeyDoc = await userDoc.collection('settings').doc('apiKeys').get();
-        if (apiKeyDoc.exists && apiKeyDoc.data()?.geminiKey) {
-          const geminiKey = apiKeyDoc.data().geminiKey;
-          const targets = [uid, email].filter(Boolean);
-          for (const targetId of targets) {
-            await supabaseAdmin.from('user_settings').upsert({
-              user_id: targetId,
-              gemini_key: geminiKey,
-              updated_at: Date.now()
-            }, { onConflict: 'user_id' });
+        const settingsUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/artifacts/quiz-lab-pro/users/${uid}/settings/apiKeys`;
+        const sRes = await fetch(settingsUrl, { headers: authHeader });
+        if (sRes.ok) {
+          const sData = await sRes.json();
+          const parsed = parseFirestoreDoc(sData.fields);
+          if (parsed.geminiKey) {
+            const targets = [uid, email].filter(Boolean);
+            for (const tId of targets) {
+              await supabaseAdmin.from('user_settings').upsert({
+                user_id: tId,
+                gemini_key: parsed.geminiKey,
+                updated_at: Date.now()
+              }, { onConflict: 'user_id' });
+            }
           }
         }
       } catch (keyErr) {
-        console.warn('API key migration warning for uid ' + uid + ':', keyErr.message);
+        console.warn('API key check warning:', keyErr.message);
       }
 
       // Fetch all modules for this user
-      const modulesCol = userDoc.collection('modules');
-      const moduleDocs = await modulesCol.get();
-
+      const modulesUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/artifacts/quiz-lab-pro/users/${uid}/modules?pageSize=1000`;
+      const mRes = await fetch(modulesUrl, { headers: authHeader });
       let userModulesMigrated = 0;
-      for (const mDoc of moduleDocs.docs) {
-        const data = mDoc.data();
-        const displayName = data.displayName || data.name || mDoc.id;
-        let content = data.content || data.questionsData || data.questions || [];
-        if (typeof content !== 'string') {
-          content = JSON.stringify(content);
-        }
-        const folderName = data.folderName || 'Saved Modules';
-        const updatedAt = data.updatedAt || Date.now();
 
-        // Save module for both UID and Email so it matches however the user logs in
-        const targetIds = [email, uid].filter(Boolean);
-        for (const targetId of targetIds) {
-          await supabaseAdmin.from('modules').upsert({
-            user_id: targetId,
-            display_name: displayName,
-            content: content,
-            folder_name: folderName,
-            updated_at: updatedAt
-          }, { onConflict: 'user_id,display_name' });
-        }
+      if (mRes.ok) {
+        const mData = await mRes.json();
+        const mDocs = mData.documents || [];
 
-        userModulesMigrated++;
-        totalModulesCount++;
+        for (const modDoc of mDocs) {
+          const docId = modDoc.name.split('/').pop();
+          const docData = parseFirestoreDoc(modDoc.fields);
+          const displayName = docData.displayName || docData.name || docId;
+          let content = docData.content || docData.questionsData || docData.questions || [];
+          if (typeof content !== 'string') {
+            content = JSON.stringify(content);
+          }
+          const folderName = docData.folderName || 'Saved Modules';
+          const updatedAt = docData.updatedAt || Date.now();
+
+          // Save module under both the UID and the Email
+          const targetIds = [email, uid].filter(Boolean);
+          for (const tId of targetIds) {
+            await supabaseAdmin.from('modules').upsert({
+              user_id: tId,
+              display_name: displayName,
+              content: content,
+              folder_name: folderName,
+              updated_at: updatedAt
+            }, { onConflict: 'user_id,display_name' });
+          }
+
+          userModulesMigrated++;
+          totalModulesCount++;
+        }
       }
 
       results.push({
@@ -135,8 +200,7 @@ export default async function handler(req, res) {
     console.error('Migration error:', err);
     return res.status(500).json({
       success: false,
-      error: err.message || 'Unknown error occurred',
-      stack: process.env.NODE_ENV !== 'production' ? err.stack : undefined
+      error: err.message
     });
   }
 }
