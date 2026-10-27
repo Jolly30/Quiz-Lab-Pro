@@ -1,26 +1,47 @@
 /* global process */
-import { initializeApp, cert, getApps } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
-import { getAuth } from 'firebase-admin/auth';
 import { supabaseAdmin } from './supabase-admin.js';
 
 export const maxDuration = 60; // 60s Vercel timeout allowance
 
 export default async function handler(req, res) {
+  res.setHeader('Content-Type', 'application/json');
+
   try {
-    if (!getApps().length) {
-      const saRaw = process.env.FIREBASE_SERVICE_ACCOUNT;
-      if (!saRaw) {
-        return res.status(500).json({ error: 'FIREBASE_SERVICE_ACCOUNT is missing in environment variables' });
+    // 1. Dynamic import of firebase-admin for Vercel Node.js ESM compatibility
+    const { initializeApp, cert, getApps } = await import('firebase-admin/app');
+    const { getFirestore } = await import('firebase-admin/firestore');
+    const { getAuth } = await import('firebase-admin/auth');
+
+    // 2. Parse service account credentials safely
+    const saRaw = process.env.FIREBASE_SERVICE_ACCOUNT;
+    if (!saRaw) {
+      return res.status(500).json({ error: 'FIREBASE_SERVICE_ACCOUNT environment variable is missing on Vercel.' });
+    }
+
+    let serviceAccount;
+    try {
+      if (saRaw.trim().startsWith('{')) {
+        serviceAccount = JSON.parse(saRaw.trim());
+      } else {
+        const decoded = Buffer.from(saRaw.trim(), 'base64').toString('utf8');
+        serviceAccount = JSON.parse(decoded);
       }
-      const serviceAccount = JSON.parse(saRaw);
+    } catch (parseErr) {
+      return res.status(500).json({ error: 'Failed to parse FIREBASE_SERVICE_ACCOUNT JSON: ' + parseErr.message });
+    }
+
+    if (serviceAccount.private_key) {
+      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+    }
+
+    if (!getApps().length) {
       initializeApp({ credential: cert(serviceAccount) });
     }
 
     const auth = getAuth();
     const db = getFirestore();
 
-    // 1. Fetch all users from Firebase Auth to map uid -> email
+    // 3. Map Firebase user IDs to their emails
     const uidToEmailMap = {};
     try {
       let pageToken = undefined;
@@ -28,16 +49,16 @@ export default async function handler(req, res) {
         const listUsersResult = await auth.listUsers(1000, pageToken);
         listUsersResult.users.forEach((userRecord) => {
           if (userRecord.email) {
-            uidToEmailMap[userRecord.uid] = userRecord.email;
+            uidToEmailMap[userRecord.uid] = userRecord.email.toLowerCase();
           }
         });
         pageToken = listUsersResult.pageToken;
       } while (pageToken);
     } catch (authErr) {
-      console.warn('Failed to list Firebase Auth users:', authErr.message);
+      console.warn('Firebase Auth listUsers warning:', authErr.message);
     }
 
-    // 2. Fetch all user documents under artifacts/quiz-lab-pro/users
+    // 4. Fetch all user documents under artifacts/quiz-lab-pro/users
     const usersColRef = db.collection('artifacts').doc('quiz-lab-pro').collection('users');
     const userDocs = await usersColRef.listDocuments();
 
@@ -48,7 +69,7 @@ export default async function handler(req, res) {
       const uid = userDoc.id;
       const email = uidToEmailMap[uid] || null;
 
-      // Migrate user settings / Gemini keys if present
+      // Migrate user's private Gemini API key if present
       try {
         const apiKeyDoc = await userDoc.collection('settings').doc('apiKeys').get();
         if (apiKeyDoc.exists && apiKeyDoc.data()?.geminiKey) {
@@ -63,10 +84,10 @@ export default async function handler(req, res) {
           }
         }
       } catch (keyErr) {
-        console.warn('Failed to migrate api key for', uid, keyErr.message);
+        console.warn('API key migration warning for uid ' + uid + ':', keyErr.message);
       }
 
-      // Fetch and migrate all modules for this user
+      // Fetch all modules for this user
       const modulesCol = userDoc.collection('modules');
       const moduleDocs = await modulesCol.get();
 
@@ -81,8 +102,7 @@ export default async function handler(req, res) {
         const folderName = data.folderName || 'Saved Modules';
         const updatedAt = data.updatedAt || Date.now();
 
-        // Save module under both the Firebase UID AND the user email
-        // This ensures the user sees their modules whether matching by email or UID
+        // Save module for both UID and Email so it matches however the user logs in
         const targetIds = [email, uid].filter(Boolean);
         for (const targetId of targetIds) {
           await supabaseAdmin.from('modules').upsert({
@@ -112,7 +132,11 @@ export default async function handler(req, res) {
     });
 
   } catch (err) {
-    console.error('Migration fatal error:', err);
-    return res.status(500).json({ error: err.message, stack: err.stack });
+    console.error('Migration error:', err);
+    return res.status(500).json({
+      success: false,
+      error: err.message || 'Unknown error occurred',
+      stack: process.env.NODE_ENV !== 'production' ? err.stack : undefined
+    });
   }
 }
