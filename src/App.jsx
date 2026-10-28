@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import AdBanner from './components/AdBanner';
 import {
   CircleCheck,
   CircleX,
@@ -27,12 +28,15 @@ import {
   ChevronRight,
   Pencil,
   Check,
-  Cloud
+  Cloud,
+  Sparkles,
+  ExternalLink
 } from 'lucide-react';
 import LiteYouTubeEmbed from 'react-lite-youtube-embed';
 import 'react-lite-youtube-embed/dist/LiteYouTubeEmbed.css';
 
 // --- SESSION & API PROXY HELPERS ---
+const SMARTLINK_URL = 'https://asiafilm.org/4/5c85bc5c109e3e2b1066cd761bb45fa1';
 const SESSION_TOKEN_KEY = 'qlp_session_token';
 const getToken = () => localStorage.getItem(SESSION_TOKEN_KEY);
 const apiHeaders = () => ({
@@ -105,6 +109,8 @@ const t = {
     logoutBtn: "Logout",
     moduleCount: "Modules",
     signInGoogle: "Sign in with Google to Sync Devices",
+    supportDev: "Support Quiz Lab",
+    specialOffers: "Sponsored Partner"
   },
   mm: {
     appTitle: "QUIZ LAB PRO",
@@ -170,6 +176,8 @@ const t = {
     logoutBtn: "အကောင့်ထွက်မည်",
     moduleCount: "မော်ဂျူး",
     signInGoogle: "စက်များအကြား ချိတ်ဆက်ရန် Google ဖြင့် ဝင်ပါ",
+    supportDev: "Quiz Lab အား ကူညီအားဖြည့်ရန်",
+    specialOffers: "မိတ်ဖက် ကြော်ငြာ"
   }
 };
 
@@ -1257,6 +1265,30 @@ export default function App() {
             <button onClick={() => setView('menu')} className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold uppercase tracking-widest shadow-xl transition-all">
               {t[lang].modulesHome}
             </button>
+
+            {/* Smartlink Placement 1: Quiz Results */}
+            <div className="mt-8 pt-6 border-t border-slate-200/40 dark:border-slate-800/60 flex flex-col items-center">
+              <a 
+                href={SMARTLINK_URL} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className={`w-full py-3.5 px-6 rounded-xl border flex items-center justify-between group transition-all ${
+                  isDark 
+                    ? 'bg-[#0B1120] border-slate-800 hover:border-amber-500/50 hover:bg-amber-500/5' 
+                    : 'bg-amber-50/50 border-amber-200/70 hover:bg-amber-50 hover:border-amber-300'
+                }`}
+              >
+                <div className="text-left">
+                  <p className={`text-xs font-bold leading-tight ${th.textMain}`}>
+                    {t[lang].supportDev}
+                  </p>
+                  <p className="text-[10px] text-slate-500 tracking-wide uppercase font-semibold">
+                    {t[lang].specialOffers}
+                  </p>
+                </div>
+                <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-amber-500 transition-colors" />
+              </a>
+            </div>
           </div>
         )}
 
@@ -1446,6 +1478,11 @@ export default function App() {
               >
                 {t[lang].cancelBtn}
               </button>
+            </div>
+
+            {/* Adsterra Banner Placement: Text Import Bottom */}
+            <div className="mt-6 pt-6 border-t border-slate-200/40 dark:border-slate-800/60">
+              <AdBanner width={300} height={250} />
             </div>
           </div>
         )}
