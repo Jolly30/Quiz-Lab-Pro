@@ -7,50 +7,61 @@ export default function AdBanner({
   height = 250,
   scriptSrc = "https://bauval.org/22/a453002d73bf049588b68d4dab8149bf"
 }) {
-  const bannerContainerRef = useRef(null);
+  const containerRef = useRef(null);
 
   useEffect(() => {
-    const container = bannerContainerRef.current;
-    if (!container) return;
+    const el = containerRef.current;
+    if (!el) return;
 
-    // Clear previous contents
-    container.innerHTML = '';
+    // Create an isolated sandboxed iframe to guarantee scripts execute reliably in React
+    const iframe = document.createElement('iframe');
+    iframe.width = `${width}`;
+    iframe.height = `${height}`;
+    iframe.style.border = 'none';
+    iframe.style.overflow = 'hidden';
+    iframe.scrolling = 'no';
 
-    try {
-      // Configuration script
-      const confScript = document.createElement('script');
-      confScript.type = 'text/javascript';
-      confScript.innerHTML = `
-        atOptions = {
-          'key' : '${adKey}',
-          'format' : '${format}',
-          'height' : ${height},
-          'width' : ${width},
-          'params' : {}
-        };
-      `;
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <style>body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; background: transparent; }</style>
+        </head>
+        <body>
+          <script type="text/javascript">
+            atOptions = {
+              'key' : '${adKey}',
+              'format' : '${format}',
+              'height' : ${height},
+              'width' : ${width},
+              'params' : {}
+            };
+          </script>
+          <script type="text/javascript" src="${scriptSrc}"></script>
+        </body>
+      </html>
+    `;
 
-      // Adsterra invocation script
-      const invokeScript = document.createElement('script');
-      invokeScript.type = 'text/javascript';
-      invokeScript.src = scriptSrc;
+    el.innerHTML = '';
+    el.appendChild(iframe);
 
-      container.appendChild(confScript);
-      container.appendChild(invokeScript);
-    } catch (err) {
-      console.error('Error loading Adsterra banner:', err);
+    // Write content into iframe
+    const doc = iframe.contentWindow || iframe.contentDocument?.document || iframe.contentDocument;
+    if (doc) {
+      const d = doc.document || doc;
+      d.open();
+      d.write(htmlContent);
+      d.close();
     }
 
     return () => {
-      if (container) {
-        container.innerHTML = '';
-      }
+      if (el) el.innerHTML = '';
     };
   }, [adKey, format, width, height, scriptSrc]);
 
   return (
     <div className="w-full flex justify-center items-center my-4 overflow-hidden min-h-[250px]">
-      <div ref={bannerContainerRef} />
+      <div ref={containerRef} style={{ width: `${width}px`, height: `${height}px` }} />
     </div>
   );
 }
