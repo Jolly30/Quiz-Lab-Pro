@@ -1481,9 +1481,7 @@ export default function App() {
             </div>
 
             {/* Adsterra Banner Placement: Text Import Bottom */}
-            <div className="mt-6 pt-6 border-t border-slate-200/40 dark:border-slate-800/60">
-              <AdBanner width={300} height={250} />
-            </div>
+            <AdBanner width={300} height={250} />
           </div>
         )}
 
