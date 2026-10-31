@@ -209,8 +209,9 @@ const getQuestionId = (q, fallbackIdx) => {
   if (!q) return `q_unknown_${fallbackIdx}`;
   if (q._uid) return q._uid;
   const rawKey = q.question || q.text || `item_${fallbackIdx}`;
-  const slug = String(rawKey).slice(0, 32).replace(/[^a-zA-Z0-9]/g, '_');
-  q._uid = `${q.type || 'q'}_${slug}_${q.correctAnswerIndex ?? ''}_${fallbackIdx}`;
+  const slug = String(rawKey).trim().slice(0, 48).replace(/[^a-zA-Z0-9]/g, '_');
+  // Only type and question text define the question identity (options and indices shuffle!)
+  q._uid = `${q.type || 'q'}_${slug}`;
   return q._uid;
 };
 
@@ -384,6 +385,9 @@ export default function App() {
     if (!user) return;
 
     const loadModules = async () => {
+      // Never overwrite live state if user is currently taking a quiz (especially scrambled)
+      if (view === 'quiz') return;
+
       try {
         const res = await fetch('/api/modules', { headers: apiHeaders() });
         if (!res.ok) return;
@@ -415,7 +419,7 @@ export default function App() {
     // Cross-device sync: poll every 30 seconds
     const interval = setInterval(loadModules, 30000);
     return () => clearInterval(interval);
-  }, [user]);
+  }, [user, view]);
 
   const handleGoogleLogin = () => {
     window.location.href = '/api/auth/init';
