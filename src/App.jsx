@@ -251,6 +251,8 @@ export default function App() {
 
   const [userCustomKey, setUserCustomKey] = useState('');
   const [showSettings, setShowSettings] = useState(false); 
+  const [isScrambled, setIsScrambled] = useState(false);
+  const originalSectionsRef = useRef({}); 
 
   const questions = activeSection ? (sections[activeSection] || []) : [];
   const unsubscribeRef = useRef(null);
@@ -833,22 +835,47 @@ export default function App() {
     });
   };
 
-  // Fisher-Yates Scramble function for currently active quiz
+  // Fisher-Yates Scramble function (Toggles between Scrambled and Original order)
   const handleScrambleCurrentQuiz = () => {
     if (!activeSection || !sections[activeSection]) return;
-    const currentList = [...sections[activeSection]];
 
-    // 1. Separate questions from headers to preserve section header anchors
-    // Or shuffle questions while updating options and keeping correctAnswerIndex accurate
-    const shuffledList = currentList.map((q) => {
+    // Reset user in-flight quiz answers every time so it starts completely fresh
+    setAnswers({});
+    setFibInput({});
+    setRevealed({});
+    setMatchTemp({});
+    setMatchSelectedA({});
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    // If currently scrambled, restore original order
+    if (isScrambled && originalSectionsRef.current[activeSection]) {
+      const originalList = originalSectionsRef.current[activeSection];
+      const restoredSections = {
+        ...sections,
+        [activeSection]: originalList
+      };
+      setSections(restoredSections);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(restoredSections));
+      setIsScrambled(false);
+      return;
+    }
+
+    // Save current baseline as original before first scramble
+    if (!originalSectionsRef.current[activeSection]) {
+      originalSectionsRef.current[activeSection] = JSON.parse(JSON.stringify(sections[activeSection]));
+    }
+
+    const baselineList = JSON.parse(JSON.stringify(originalSectionsRef.current[activeSection]));
+
+    // 1. Scramble options for MCQs and update correctAnswerIndex
+    const processedList = baselineList.map((q) => {
       if (q.type !== 'mcq' && q.type !== 'tf') return q;
       if (!Array.isArray(q.options) || q.options.length <= 1) return q;
 
-      // Remember correct option content
       const correctOptText = q.options[q.correctAnswerIndex];
-
-      // Clone and shuffle options using Fisher-Yates
       const newOptions = [...q.options];
+
+      // Fisher-Yates shuffle options
       for (let i = newOptions.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [newOptions[i], newOptions[j]] = [newOptions[j], newOptions[i]];
@@ -863,8 +890,7 @@ export default function App() {
       };
     });
 
-    // 2. Fisher-Yates shuffle the question list itself (keeping headers or shuffling between headers)
-    // Identify question blocks between headers
+    // 2. Fisher-Yates shuffle questions within blocks between headers
     const result = [];
     let block = [];
 
@@ -877,7 +903,7 @@ export default function App() {
       block = [];
     };
 
-    shuffledList.forEach((item) => {
+    processedList.forEach((item) => {
       if (item.type === 'header') {
         flushBlock();
         result.push(item);
@@ -887,19 +913,13 @@ export default function App() {
     });
     flushBlock();
 
-    // Reset user in-flight quiz answers so questions start fresh
-    setAnswers({});
-    setFibInput({});
-    setRevealed({});
-    setMatchTemp({});
-    setMatchSelectedA({});
-
     const updatedSections = {
       ...sections,
       [activeSection]: result
     };
     setSections(updatedSections);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedSections));
+    setIsScrambled(true);
   };
 
   const scrollToNext = (idx) => {
@@ -1003,11 +1023,13 @@ export default function App() {
             <>
               <button 
                 onClick={handleScrambleCurrentQuiz}
-                title={t[lang].scramble}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border transition-all text-xs font-bold ${isDark ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/20' : 'bg-indigo-50 border-indigo-200 text-indigo-600 hover:bg-indigo-100'}`}
+                title={isScrambled ? (lang === 'en' ? 'Restore original order' : 'မူလအစဉ်အတိုင်း ပြန်ထားမည်') : t[lang].scramble}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border transition-all text-xs font-bold ${isScrambled ? (isDark ? 'bg-amber-500/15 border-amber-500/40 text-amber-300 hover:bg-amber-500/25' : 'bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100') : (isDark ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/20' : 'bg-indigo-50 border-indigo-200 text-indigo-600 hover:bg-indigo-100')}`}
               >
-                <Shuffle className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">{lang === 'en' ? 'Scramble' : 'ရောမွှေမည်'}</span>
+                <Shuffle className={`w-3.5 h-3.5 ${isScrambled ? 'rotate-180 transition-transform' : ''}`} />
+                <span className="hidden sm:inline">
+                  {isScrambled ? (lang === 'en' ? 'Unscramble' : 'မူလအစဉ်') : (lang === 'en' ? 'Scramble' : 'ရောမွှေမည်')}
+                </span>
               </button>
 
               <div className={`mr-2 flex items-center gap-3 px-3 py-1.5 rounded-full ${isDark ? 'bg-green-500/10 border border-green-500/20' : 'bg-green-50 border border-green-200'}`}>
@@ -1136,7 +1158,7 @@ export default function App() {
                   {isExpanded && (
                     <div className="px-6 pb-6 pt-2 grid grid-cols-1 sm:grid-cols-2 gap-4 animate-in slide-in-from-top-2 duration-300">
                       {mods.map(name => (
-                        <div key={name} className={`relative group border rounded-3xl p-6 transition-all cursor-pointer ${th.card} ${th.cardHover}`} onClick={() => {setActiveSection(name); setAnswers({}); setView('quiz'); window.scrollTo(0,0);}}>
+                        <div key={name} className={`relative group border rounded-3xl p-6 transition-all cursor-pointer ${th.card} ${th.cardHover}`} onClick={() => {setActiveSection(name); setIsScrambled(false); setAnswers({}); setView('quiz'); window.scrollTo(0,0);}}>
                           
                           {/* EDIT MODULE NAME */}
                           {editingModule === name ? (
