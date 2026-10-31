@@ -109,7 +109,7 @@ export default async function handler(req, res) {
     }
 
     const sanitizedInput = rawInput
-      .replace(/<[^>]*>/g, '')        // strip HTML tags
+      .replace(/<(?!\/?u\b)[^>]*>/gi, '')  // strip HTML tags EXCEPT <u> and </u>
       // eslint-disable-next-line no-control-regex
       .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')  // strip control chars
       .trim()
@@ -136,6 +136,10 @@ CRITICAL PARSING RULES:
 6. HANDLE MESSY FORMATTING (MERGED & MISSING NUMBERS): You must detect when a new question starts even if the formatting is broken.
 [Format 1 - Merged]: "13. [Text] Ans: False 14. [Text] Ans: True" -> Split into two objects.
 [Format 2 - Missing Number]: "Answer: False \\n A circuit breaker... Answer: True" -> Recognize the text after the first "Answer:" as a completely new question. Automatically assign it the next logical number (e.g., 14) and create a separate JSON object.
+7. PRESERVE UNDERLINES & VOCABULARY CONTEXT:
+   - When questions contain <u>...</u> tags (e.g. from Word or vocabulary tests), YOU MUST PRESERVE the <u>...</u> tags inside the "question" string!
+   - Example: {"type": "mcq", "q_num": 1, "question": "I <u>like</u> you.", "options": ["fancy", "hate", "ignore"], "correctAnswerIndex": 0}
+   - NEVER strip or remove <u> and </u> tags.
 
 CRITICAL EXAMPLES:
 

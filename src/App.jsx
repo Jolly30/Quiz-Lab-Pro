@@ -30,7 +30,8 @@ import {
   Check,
   Cloud,
   Sparkles,
-  ExternalLink
+  ExternalLink,
+  Shuffle
 } from 'lucide-react';
 import LiteYouTubeEmbed from 'react-lite-youtube-embed';
 import 'react-lite-youtube-embed/dist/LiteYouTubeEmbed.css';
@@ -67,6 +68,8 @@ const t = {
     processingComplete: "Processing Complete!",
     aiAnalysisInProgress: "AI Analysis in Progress...",
     errorGeneric: "System error. Please wait a minute and try again.",
+    scramble: "Scramble Questions & Choices",
+    scrambledToast: "Quiz scrambled successfully!",
     settings: "Settings",
     privateLimitsActive: "Private Limits Active",
     privateKeyActiveDesc: "You are currently using your own Gemini API key. The community daily limits have been successfully bypassed.",
@@ -134,6 +137,8 @@ const t = {
     processingComplete: "လုပ်ဆောင်မှု ပြီးစီးပါပြီ!",
     aiAnalysisInProgress: "AI မှ ခွဲခြမ်းစိတ်ဖြာနေပါသည်...",
     errorGeneric: "စနစ် အလုပ်လုပ်ရာတွင် အခက်အခဲရှိနေပါသည်။ ခေတ္တစောင့်၍ ပြန်လည်ကြိုးစားပါ။",
+    scramble: "မေးခွန်းနှင့် အဖြေများကို ရောမွှေမည်",
+    scrambledToast: "မေးခွန်းများကို အောင်မြင်စွာ ရောမွှေပြီးပါပြီ!",
     settings: "ဆက်တင်များ",
     privateLimitsActive: "ကိုယ်ပိုင် API ဖြင့် အသုံးပြုနေပါသည်",
     privateKeyActiveDesc: "သင့်ကိုယ်ပိုင် Gemini API key ကို အသုံးပြုနေပါသည်။ နေ့စဉ် အခမဲ့အသုံးပြုခွင့် ကန့်သတ်ချက်များကို ကျော်ဖြတ်ပြီးပါပြီ။",
@@ -774,7 +779,14 @@ export default function App() {
 
   const checkCorrect = (q, val) => {
     if (!q || val === undefined || q.type === 'header') return false;
-    if (q.type === 'mcq' || q.type === 'tf') return val === q.correctAnswerIndex;
+    if (q.type === 'mcq' || q.type === 'tf') {
+      // Support matching by stable option object/text or index
+      if (typeof val === 'object' && val !== null && val.optText !== undefined) {
+        const correctText = q.options ? q.options[q.correctAnswerIndex] : null;
+        return val.optText === correctText;
+      }
+      return val === q.correctAnswerIndex;
+    }
     if (q.type === 'fib') {
       const cleanInput = (str) => str?.trim().toLowerCase().replace(/\s*,\s*/g, ',').replace(/\s+/g, ' '); 
       const userInput = cleanInput(val);
@@ -789,6 +801,105 @@ export default function App() {
         return q.colA.every((_, aIdx) => val[aIdx] === q.correctMatches[aIdx] || val[aIdx] === q.correctMatches[String(aIdx)]);
     }
     return false;
+  };
+
+  // Helper to safely render underlines (<u>...</u>) and blank tokens
+  const renderFormattedQuestion = (text) => {
+    if (!text) return "";
+    const parts = text.split(/(<u>[\s\S]*?<\/u>|___+)/gi);
+    if (parts.length === 1) return text;
+
+    return parts.map((part, pIdx) => {
+      if (part.toLowerCase().startsWith('<u>') && part.toLowerCase().endsWith('</u>')) {
+        const word = part.replace(/<\/?u>/gi, '');
+        return (
+          <span 
+            key={pIdx} 
+            className="font-bold underline decoration-blue-500 decoration-2 underline-offset-4 text-blue-600 dark:text-blue-400"
+          >
+            {word}
+          </span>
+        );
+      }
+      if (/^___+$/.test(part)) {
+        return (
+          <span 
+            key={pIdx} 
+            className="inline-block border-b-2 border-blue-500/80 min-w-[3rem] mx-1 align-baseline"
+          />
+        );
+      }
+      return part;
+    });
+  };
+
+  // Fisher-Yates Scramble function for currently active quiz
+  const handleScrambleCurrentQuiz = () => {
+    if (!activeSection || !sections[activeSection]) return;
+    const currentList = [...sections[activeSection]];
+
+    // 1. Separate questions from headers to preserve section header anchors
+    // Or shuffle questions while updating options and keeping correctAnswerIndex accurate
+    const shuffledList = currentList.map((q) => {
+      if (q.type !== 'mcq' && q.type !== 'tf') return q;
+      if (!Array.isArray(q.options) || q.options.length <= 1) return q;
+
+      // Remember correct option content
+      const correctOptText = q.options[q.correctAnswerIndex];
+
+      // Clone and shuffle options using Fisher-Yates
+      const newOptions = [...q.options];
+      for (let i = newOptions.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [newOptions[i], newOptions[j]] = [newOptions[j], newOptions[i]];
+      }
+
+      const newCorrectIdx = newOptions.indexOf(correctOptText);
+
+      return {
+        ...q,
+        options: newOptions,
+        correctAnswerIndex: newCorrectIdx >= 0 ? newCorrectIdx : 0
+      };
+    });
+
+    // 2. Fisher-Yates shuffle the question list itself (keeping headers or shuffling between headers)
+    // Identify question blocks between headers
+    const result = [];
+    let block = [];
+
+    const flushBlock = () => {
+      for (let i = block.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [block[i], block[j]] = [block[j], block[i]];
+      }
+      result.push(...block);
+      block = [];
+    };
+
+    shuffledList.forEach((item) => {
+      if (item.type === 'header') {
+        flushBlock();
+        result.push(item);
+      } else {
+        block.push(item);
+      }
+    });
+    flushBlock();
+
+    // Reset user in-flight quiz answers so questions start fresh
+    setAnswers({});
+    setFibInput({});
+    setRevealed({});
+    setMatchTemp({});
+    setMatchSelectedA({});
+
+    const updatedSections = {
+      ...sections,
+      [activeSection]: result
+    };
+    setSections(updatedSections);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedSections));
   };
 
   const scrollToNext = (idx) => {
@@ -828,7 +939,7 @@ export default function App() {
     btnActive: isDark ? 'bg-white/10 text-blue-400' : 'bg-blue-50 text-blue-600',
     inputBg: isDark ? 'bg-[#0B1120] border-slate-800 text-white focus:border-blue-500' : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-blue-500',
     pill: isDark ? 'bg-slate-800/60 border-slate-700/80 text-blue-400/90' : 'bg-blue-50 border-blue-200 text-blue-600',
-    mcqOpt: isDark ? 'bg-[#1f2937]/30 border-slate-700 hover:bg-[#1f2937]/80 text-slate-200' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-700',
+    mcqOpt: isDark ? 'bg-[#1f2937]/40 border-slate-700/80 hover:bg-[#1f2937]/90 text-zinc-200' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-700',
     matchCont: isDark ? 'bg-slate-800/50 border-slate-700/50' : 'bg-slate-100 border-slate-200',
     matchItem: isDark ? 'bg-[#111827] border-slate-800/50 hover:bg-slate-800/40 text-slate-200' : 'bg-white border-b-slate-100 hover:bg-slate-50 text-slate-700',
     matchActive: isDark ? 'bg-blue-900/30' : 'bg-blue-50',
@@ -889,18 +1000,29 @@ export default function App() {
 
         <div className="flex items-center gap-2">
           {view === 'quiz' && (
-            <div className={`mr-2 flex items-center gap-3 px-3 py-1.5 rounded-full ${isDark ? 'bg-green-500/10 border border-green-500/20' : 'bg-green-50 border border-green-200'}`}>
-              <Target className={`w-3.5 h-3.5 ${isDark ? 'text-green-400' : 'text-green-600'}`} />
-              <span className={`text-[10px] font-black uppercase tracking-tighter ${isDark ? 'text-green-400' : 'text-green-600'}`}>
-                {calculateScore()} / {totalQuestions}
-              </span>
+            <>
               <button 
-                onClick={() => {setAnswers({}); setFibInput({}); setRevealed({}); setMatchTemp({}); setMatchSelectedA({}); window.scrollTo(0,0);}} 
-                className={`transition-colors ml-1 p-0.5 ${isDark ? 'text-green-500 hover:text-green-300' : 'text-green-600 hover:text-green-800'}`}
+                onClick={handleScrambleCurrentQuiz}
+                title={t[lang].scramble}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border transition-all text-xs font-bold ${isDark ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/20' : 'bg-indigo-50 border-indigo-200 text-indigo-600 hover:bg-indigo-100'}`}
               >
-                <RotateCcw className="w-3 h-3" />
+                <Shuffle className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">{lang === 'en' ? 'Scramble' : 'ရောမွှေမည်'}</span>
               </button>
-            </div>
+
+              <div className={`mr-2 flex items-center gap-3 px-3 py-1.5 rounded-full ${isDark ? 'bg-green-500/10 border border-green-500/20' : 'bg-green-50 border border-green-200'}`}>
+                <Target className={`w-3.5 h-3.5 ${isDark ? 'text-green-400' : 'text-green-600'}`} />
+                <span className={`text-[10px] font-black uppercase tracking-tighter ${isDark ? 'text-green-400' : 'text-green-600'}`}>
+                  {calculateScore()} / {totalQuestions}
+                </span>
+                <button 
+                  onClick={() => {setAnswers({}); setFibInput({}); setRevealed({}); setMatchTemp({}); setMatchSelectedA({}); window.scrollTo(0,0);}} 
+                  className={`transition-colors ml-1 p-0.5 ${isDark ? 'text-green-500 hover:text-green-300' : 'text-green-600 hover:text-green-800'}`}
+                >
+                  <RotateCcw className="w-3 h-3" />
+                </button>
+              </div>
+            </>
           )}
 
           <button 
@@ -1116,7 +1238,7 @@ export default function App() {
                       </span>
                     )}
                   </div>
-                  <p className={`text-lg md:text-xl font-medium mb-6 whitespace-pre-line leading-relaxed ${th.textMain}`}>{q.question}</p>
+                  <p className={`text-lg md:text-xl font-medium mb-6 whitespace-pre-line leading-relaxed ${th.textMain}`}>{renderFormattedQuestion(q.question)}</p>
                   {(q.type === 'mcq' || q.type === 'tf') && (
                     <div className="space-y-3">
                       {q.options.map((opt, oIdx) => {
@@ -1423,7 +1545,55 @@ export default function App() {
             
             <input type="text" value={moduleName} onChange={(e)=>setModuleName(e.target.value)} placeholder={t[lang].moduleNamePlaceholder} className={`w-full p-4 rounded-xl border mb-4 font-medium outline-none transition-all ${th.inputBg}`} />
             
-            <textarea value={rawInput} onChange={(e)=>setRawInput(e.target.value)} placeholder={t[lang].pasteRawTextPlaceholder} className={`w-full h-80 p-5 rounded-xl border font-mono text-sm mb-6 outline-none transition-all leading-relaxed ${th.inputBg}`} />
+            <textarea 
+              value={rawInput} 
+              onChange={(e)=>setRawInput(e.target.value)} 
+              onPaste={(e) => {
+                const htmlData = e.clipboardData.getData('text/html');
+                if (htmlData && (htmlData.includes('text-decoration:underline') || htmlData.includes('text-decoration: underline') || htmlData.includes('<u') || htmlData.includes('style="text-decoration:underline'))) {
+                  try {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(htmlData, 'text/html');
+
+                    // Find all underline nodes (Word spans with text-decoration or <u> elements)
+                    const underlineNodes = doc.querySelectorAll('u, [style*="text-decoration: underline"], [style*="text-decoration:underline"]');
+                    underlineNodes.forEach(node => {
+                      const text = node.textContent;
+                      if (text && text.trim().length > 0) {
+                        const uTag = doc.createElement('u');
+                        uTag.textContent = text;
+                        node.parentNode?.replaceChild(uTag, node);
+                      }
+                    });
+
+                    // Convert HTML to clean plain text keeping <u> tags
+                    let processedText = doc.body.innerHTML
+                      .replace(/<br\s*\/?>/gi, '\n')
+                      .replace(/<\/p>/gi, '\n')
+                      .replace(/<\/div>/gi, '\n')
+                      .replace(/<(?!\/?u\b)[^>]+>/gi, '') // strip all tags EXCEPT <u> and </u>
+                      .replace(/&nbsp;/g, ' ')
+                      .replace(/&amp;/g, '&')
+                      .replace(/&lt;/g, '<')
+                      .replace(/&gt;/g, '>');
+
+                    if (processedText.includes('<u>')) {
+                      e.preventDefault();
+                      const target = e.target;
+                      const start = target.selectionStart || 0;
+                      const end = target.selectionEnd || 0;
+                      const currentVal = rawInput || '';
+                      const nextVal = currentVal.substring(0, start) + processedText + currentVal.substring(end);
+                      setRawInput(nextVal);
+                    }
+                  } catch (err) {
+                    console.warn('Rich paste handler error:', err);
+                  }
+                }
+              }}
+              placeholder={t[lang].pasteRawTextPlaceholder} 
+              className={`w-full h-80 p-5 rounded-xl border font-mono text-sm mb-6 outline-none transition-all leading-relaxed ${th.inputBg}`} 
+            />
             
             {(isProcessing || isSuccess) && (
               <div className="w-full mb-6 animate-in fade-in duration-500">
