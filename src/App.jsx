@@ -1455,7 +1455,16 @@ export default function App() {
                 <p className="text-4xl font-black text-blue-500">{totalQuestions > 0 ? Math.round((calculateScore()/totalQuestions)*100) : 0}%</p>
               </div>
             </div>
-            <button onClick={() => setView('menu')} className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold uppercase tracking-widest shadow-xl transition-all">
+            <button onClick={() => {
+              setView('menu');
+              setAnswers({});
+              setFibInput({});
+              setRevealed({});
+              setMatchTemp({});
+              setMatchSelectedA({});
+              setIsScrambled(false);
+              window.scrollTo(0,0);
+            }} className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold uppercase tracking-widest shadow-xl transition-all">
               {t[lang].modulesHome}
             </button>
 
