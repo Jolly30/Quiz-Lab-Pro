@@ -817,7 +817,7 @@ export default function App() {
         return (
           <span 
             key={pIdx} 
-            className="font-bold underline decoration-blue-500 decoration-2 underline-offset-4 text-blue-600 dark:text-blue-400"
+            className="font-bold underline decoration-current decoration-2 underline-offset-4"
           >
             {word}
           </span>
@@ -827,7 +827,7 @@ export default function App() {
         return (
           <span 
             key={pIdx} 
-            className="inline-block border-b-2 border-blue-500/80 min-w-[3rem] mx-1 align-baseline"
+            className="inline-block border-b-2 border-current min-w-[3rem] mx-1 align-baseline"
           />
         );
       }
