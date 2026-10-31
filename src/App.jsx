@@ -1246,9 +1246,9 @@ export default function App() {
                         const isSelected = userVal === oIdx;
                         let style = th.mcqOpt; 
                         if (isAns || isRev) {
-                          if (isCorrectOpt) style = (q.type === 'tf' && !isSelected && isAns) ? "opacity-40" : (isDark ? "bg-green-900/30 border-green-500 text-green-400 font-bold" : "bg-green-100 border-green-500 text-green-700 font-bold");
+                          if (isCorrectOpt) style = (q.type === 'tf' && !isSelected && isAns) ? (isDark ? "text-zinc-300 opacity-60 border-slate-700/60" : "text-slate-600 opacity-60") : (isDark ? "bg-green-900/30 border-green-500 text-green-400 font-bold" : "bg-green-100 border-green-500 text-green-700 font-bold");
                           else if (isAns && isSelected) style = isDark ? "bg-red-900/30 border-red-500 text-red-400 font-bold" : "bg-red-100 border-red-500 text-red-700 font-bold";
-                          else style = "opacity-40";
+                          else style = isDark ? "bg-[#1f2937]/20 border-slate-700/50 text-white opacity-80" : "bg-slate-50 border-slate-200 text-slate-500 opacity-70";
                         }
                         return (
                           <button key={oIdx} disabled={isAns} onClick={() => { setAnswers({...answers, [idx]: oIdx}); if(!isAns) setTimeout(() => scrollToNext(idx), 600); }} className={`w-full text-left p-4 rounded-2xl border transition-colors flex justify-between items-center group ${style}`}>
