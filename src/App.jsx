@@ -895,10 +895,11 @@ export default function App() {
       originalSectionsRef.current[activeSection] = JSON.parse(JSON.stringify(sections[activeSection]));
     }
 
-    const baselineList = JSON.parse(JSON.stringify(originalSectionsRef.current[activeSection]));
+    // Scramble from the current active question list so each click produces a fresh random permutation
+    const sourceList = JSON.parse(JSON.stringify(sections[activeSection]));
 
-    // 1. Scramble options for MCQs and update correctAnswerIndex
-    const processedList = baselineList.map((q) => {
+    // 1. Scramble options for all MCQs (guaranteeing a new shuffle each time)
+    const processedList = sourceList.map((q) => {
       if (q.type !== 'mcq' && q.type !== 'tf') return q;
       if (!Array.isArray(q.options) || q.options.length <= 1) return q;
 
@@ -1306,7 +1307,7 @@ export default function App() {
                           else style = isDark ? "bg-[#1f2937]/20 border-slate-700/50 text-white opacity-80" : "bg-slate-50 border-slate-200 text-slate-500 opacity-70";
                         }
                         return (
-                          <button key={oIdx} disabled={isAns} onClick={() => { setAnswers({...answers, [idx]: oIdx}); if(!isAns) setTimeout(() => scrollToNext(idx), 600); }} className={`w-full text-left p-4 rounded-2xl border transition-colors flex justify-between items-center group ${style}`}>
+                          <button key={`${opt}-${oIdx}`} disabled={isAns} onClick={() => { setAnswers({...answers, [idx]: oIdx}); if(!isAns) setTimeout(() => scrollToNext(idx), 600); }} className={`w-full text-left p-4 rounded-2xl border transition-colors flex justify-between items-center group ${style}`}>
                             <span className="flex items-start text-sm md:text-base font-normal">
                               {q.type !== 'tf' && <span className="mr-2 opacity-60">{String.fromCharCode(65 + oIdx)})</span>}
                               {opt}
