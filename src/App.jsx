@@ -1366,7 +1366,8 @@ export default function App() {
                       </form>
                     </div>
                   )}
-                  {(isAns || isRev) && (q.type === 'fib' || q.type === 'matching') && (
+                  {/* Only show Official Answer if revealed, or if answered AND incorrect */}
+                  {((isRev) || (isAns && !checkCorrect(q, userVal))) && (q.type === 'fib' || q.type === 'matching') && (
                     <div className={`p-4 mt-6 rounded-2xl border flex items-start gap-3 animate-in slide-in-from-top-2 ${isDark ? 'bg-[#0B1120] border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
                       <div className="w-full">
                         <div className="flex justify-between items-center mb-3">
