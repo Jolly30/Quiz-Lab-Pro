@@ -781,26 +781,34 @@ export default function App() {
 
   const checkCorrect = (q, val) => {
     if (!q || val === undefined || q.type === 'header') return false;
-    if (q.type === 'mcq' || q.type === 'tf') {
-      // Support matching by stable option object/text or index
-      if (typeof val === 'object' && val !== null && val.optText !== undefined) {
-        const correctText = q.options ? q.options[q.correctAnswerIndex] : null;
-        return val.optText === correctText;
+    try {
+      if (q.type === 'mcq' || q.type === 'tf') {
+        if (typeof val === 'object' && val !== null && val.optText !== undefined) {
+          const correctText = q.options ? q.options[q.correctAnswerIndex] : null;
+          return val.optText === correctText;
+        }
+        return Number(val) === Number(q.correctAnswerIndex);
       }
-      return val === q.correctAnswerIndex;
-    }
-    if (q.type === 'fib') {
-      const cleanInput = (str) => str?.trim().toLowerCase().replace(/\s*,\s*/g, ',').replace(/\s+/g, ' '); 
-      const userInput = cleanInput(val);
-      const officialAnswer = cleanInput(q.answerText);
-      if (!userInput || !officialAnswer) return false;
-      const officialParts = officialAnswer.split(/\s+or\s+|\//);
-      const userParts = userInput.split(/\s+or\s+|\//);
-      return userParts.every(part => officialParts.includes(part));
-    }
-    if (q.type === 'matching') {
-        if (!val || Object.keys(val).length === 0) return false;
+      if (q.type === 'fib') {
+        const cleanInput = (str) => {
+          if (typeof str !== 'string' && typeof str !== 'number') return '';
+          return String(str).trim().toLowerCase().replace(/\s*,\s*/g, ',').replace(/\s+/g, ' ');
+        };
+        const userInput = cleanInput(val);
+        const officialAnswer = cleanInput(q.answerText);
+        if (!userInput || !officialAnswer) return false;
+        const officialParts = officialAnswer.split(/\s+or\s+|\//);
+        const userParts = userInput.split(/\s+or\s+|\//);
+        return userParts.every(part => officialParts.includes(part));
+      }
+      if (q.type === 'matching') {
+        if (!val || typeof val !== 'object' || Object.keys(val).length === 0) return false;
+        if (!Array.isArray(q.colA) || !q.correctMatches) return false;
         return q.colA.every((_, aIdx) => val[aIdx] === q.correctMatches[aIdx] || val[aIdx] === q.correctMatches[String(aIdx)]);
+      }
+    } catch (err) {
+      console.warn('checkCorrect safety error:', err);
+      return false;
     }
     return false;
   };
@@ -808,11 +816,12 @@ export default function App() {
   // Helper to safely render underlines (<u>...</u>) and blank tokens
   const renderFormattedQuestion = (text) => {
     if (!text) return "";
-    const parts = text.split(/(<u>[\s\S]*?<\/u>|___+)/gi);
-    if (parts.length === 1) return text;
+    const rawStr = typeof text === 'string' ? text : (text?.text || String(text || ''));
+    const parts = rawStr.split(/(<u>[\s\S]*?<\/u>|___+)/gi);
+    if (parts.length === 1) return rawStr;
 
     return parts.map((part, pIdx) => {
-      if (part.toLowerCase().startsWith('<u>') && part.toLowerCase().endsWith('</u>')) {
+      if (typeof part === 'string' && part.toLowerCase().startsWith('<u>') && part.toLowerCase().endsWith('</u>')) {
         const word = part.replace(/<\/?u>/gi, '');
         return (
           <span 
@@ -823,7 +832,7 @@ export default function App() {
           </span>
         );
       }
-      if (/^___+$/.test(part)) {
+      if (typeof part === 'string' && /^___+$/.test(part)) {
         return (
           <span 
             key={pIdx} 
@@ -840,29 +849,40 @@ export default function App() {
     if (!activeSection || !sections[activeSection]) return;
     const currentList = sections[activeSection];
 
+    // Ensure baseline original order is preserved in memory
+    if (!originalSectionsRef.current[activeSection]) {
+      originalSectionsRef.current[activeSection] = JSON.parse(JSON.stringify(sections[activeSection]));
+    }
+
     // Helper: Map user responses to the new list so answered questions stay answered!
     const rebindAnswersToNewList = (newList) => {
       const newAnswers = {};
       const newFibInput = {};
       const newRevealed = {};
+      const newMatchTemp = {};
+      const matchedOldIndices = new Set();
 
       newList.forEach((newQ, newIdx) => {
-        // Find previous index of this question in currentList
-        const prevIdx = currentList.findIndex(
-          oldQ => oldQ.type === newQ.type && (oldQ.question === newQ.question || (oldQ.type === 'header' && oldQ.text === newQ.text))
-        );
+        // Find previous index of this exact question object in currentList
+        const prevIdx = currentList.findIndex((oldQ, oIdx) => {
+          if (matchedOldIndices.has(oIdx)) return false;
+          return oldQ.type === newQ.type && (oldQ.question === newQ.question || (oldQ.type === 'header' && oldQ.text === newQ.text));
+        });
+
         if (prevIdx !== -1) {
+          matchedOldIndices.add(prevIdx);
           if (fibInput[prevIdx] !== undefined) newFibInput[newIdx] = fibInput[prevIdx];
           if (revealed[prevIdx] !== undefined) newRevealed[newIdx] = revealed[prevIdx];
+          if (matchTemp[prevIdx] !== undefined) newMatchTemp[newIdx] = matchTemp[prevIdx];
 
           const prevVal = answers[prevIdx];
           if (prevVal !== undefined) {
             const prevQ = currentList[prevIdx];
             if ((newQ.type === 'mcq' || newQ.type === 'tf') && Array.isArray(prevQ.options) && Array.isArray(newQ.options)) {
               // Map by selected option text so choice order changes don't corrupt the answer
-              const chosenText = prevQ.options[prevVal];
+              const chosenText = typeof prevVal === 'number' ? prevQ.options[prevVal] : prevVal;
               const newOptionIdx = newQ.options.indexOf(chosenText);
-              newAnswers[newIdx] = newOptionIdx !== -1 ? newOptionIdx : prevVal;
+              newAnswers[newIdx] = newOptionIdx !== -1 ? newOptionIdx : 0;
             } else {
               newAnswers[newIdx] = prevVal;
             }
@@ -873,6 +893,7 @@ export default function App() {
       setAnswers(newAnswers);
       setFibInput(newFibInput);
       setRevealed(newRevealed);
+      setMatchTemp(newMatchTemp);
     };
 
     // If currently scrambled, restore original order
@@ -885,18 +906,12 @@ export default function App() {
         [activeSection]: originalList
       };
       setSections(restoredSections);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(restoredSections));
       setIsScrambled(false);
       return;
     }
 
-    // Save current baseline as original before first scramble
-    if (!originalSectionsRef.current[activeSection]) {
-      originalSectionsRef.current[activeSection] = JSON.parse(JSON.stringify(sections[activeSection]));
-    }
-
-    // Scramble from the current active question list so each click produces a fresh random permutation
-    const sourceList = JSON.parse(JSON.stringify(sections[activeSection]));
+    // Scramble from original baseline or current list
+    const sourceList = JSON.parse(JSON.stringify(originalSectionsRef.current[activeSection] || sections[activeSection]));
 
     // 1. Scramble options for all MCQs (guaranteeing a new shuffle each time)
     const processedList = sourceList.map((q) => {
@@ -952,7 +967,6 @@ export default function App() {
       [activeSection]: result
     };
     setSections(updatedSections);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedSections));
     setIsScrambled(true);
   };
 
