@@ -204,6 +204,16 @@ const formatNumber = (num, lang) => {
   return String(num).split('').map(d => burmeseNumbers[d] || d).join('');
 };
 
+// Stable question identifier generator across shuffles and renders
+const getQuestionId = (q, fallbackIdx) => {
+  if (!q) return `q_unknown_${fallbackIdx}`;
+  if (q._uid) return q._uid;
+  const rawKey = q.question || q.text || `item_${fallbackIdx}`;
+  const slug = String(rawKey).slice(0, 32).replace(/[^a-zA-Z0-9]/g, '_');
+  q._uid = `${q.type || 'q'}_${slug}_${q.correctAnswerIndex ?? ''}_${fallbackIdx}`;
+  return q._uid;
+};
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [sections, setSections] = useState({});
@@ -783,11 +793,21 @@ export default function App() {
     if (!q || val === undefined || q.type === 'header') return false;
     try {
       if (q.type === 'mcq' || q.type === 'tf') {
+        const correctText = Array.isArray(q.options) ? q.options[q.correctAnswerIndex] : null;
+        if (typeof val === 'string') {
+          return correctText !== null && val === correctText;
+        }
         if (typeof val === 'object' && val !== null && val.optText !== undefined) {
-          const correctText = q.options ? q.options[q.correctAnswerIndex] : null;
           return val.optText === correctText;
         }
-        return Number(val) === Number(q.correctAnswerIndex);
+        if (typeof val === 'number') {
+          // If stored as index, verify with options
+          if (Array.isArray(q.options) && q.options[val] !== undefined) {
+            return q.options[val] === correctText;
+          }
+          return Number(val) === Number(q.correctAnswerIndex);
+        }
+        return false;
       }
       if (q.type === 'fib') {
         const cleanInput = (str) => {
@@ -849,62 +869,23 @@ export default function App() {
     if (!activeSection || !sections[activeSection]) return;
     const currentList = sections[activeSection];
 
-    // Ensure baseline original order is preserved in memory
+    // Ensure baseline original order is preserved in memory with persistent UIDs
     if (!originalSectionsRef.current[activeSection]) {
-      originalSectionsRef.current[activeSection] = JSON.parse(JSON.stringify(sections[activeSection]));
+      const cloned = JSON.parse(JSON.stringify(sections[activeSection]));
+      cloned.forEach((q, idx) => {
+        getQuestionId(q, idx);
+      });
+      originalSectionsRef.current[activeSection] = cloned;
     }
 
-    // Helper: Map user responses to the new list so answered questions stay answered!
-    const rebindAnswersToNewList = (newList) => {
-      const newAnswers = {};
-      const newFibInput = {};
-      const newRevealed = {};
-      const newMatchTemp = {};
-      const matchedOldIndices = new Set();
-
-      newList.forEach((newQ, newIdx) => {
-        // Find previous index of this exact question object in currentList
-        const prevIdx = currentList.findIndex((oldQ, oIdx) => {
-          if (matchedOldIndices.has(oIdx)) return false;
-          return oldQ.type === newQ.type && (oldQ.question === newQ.question || (oldQ.type === 'header' && oldQ.text === newQ.text));
-        });
-
-        if (prevIdx !== -1) {
-          matchedOldIndices.add(prevIdx);
-          if (fibInput[prevIdx] !== undefined) newFibInput[newIdx] = fibInput[prevIdx];
-          if (revealed[prevIdx] !== undefined) newRevealed[newIdx] = revealed[prevIdx];
-          if (matchTemp[prevIdx] !== undefined) newMatchTemp[newIdx] = matchTemp[prevIdx];
-
-          const prevVal = answers[prevIdx];
-          if (prevVal !== undefined && prevVal !== null && prevVal !== '') {
-            const prevQ = currentList[prevIdx];
-            if ((newQ.type === 'mcq' || newQ.type === 'tf') && Array.isArray(prevQ.options) && Array.isArray(newQ.options)) {
-              // Map by selected option text so choice order changes don't corrupt the answer
-              const chosenText = typeof prevVal === 'number' ? prevQ.options[prevVal] : prevVal;
-              const newOptionIdx = newQ.options.indexOf(chosenText);
-              if (newOptionIdx !== -1) {
-                newAnswers[newIdx] = newOptionIdx;
-              }
-            } else if (newQ.type === 'fib' && typeof prevVal === 'string' && prevVal.trim().length > 0) {
-              newAnswers[newIdx] = prevVal;
-            } else if (newQ.type === 'matching' && typeof prevVal === 'object') {
-              newAnswers[newIdx] = prevVal;
-            }
-          }
-        }
-      });
-
-      setAnswers(newAnswers);
-      setFibInput(newFibInput);
-      setRevealed(newRevealed);
-      setMatchTemp(newMatchTemp);
-    };
+    // Ensure currentList items also have UIDs
+    currentList.forEach((q, idx) => {
+      getQuestionId(q, idx);
+    });
 
     // If currently scrambled, restore original order
     if (isScrambled && originalSectionsRef.current[activeSection]) {
       const originalList = originalSectionsRef.current[activeSection];
-      rebindAnswersToNewList(originalList);
-
       const restoredSections = {
         ...sections,
         [activeSection]: originalList
@@ -914,11 +895,12 @@ export default function App() {
       return;
     }
 
-    // Scramble from original baseline or current list
+    // Scramble from original baseline to prevent cumulative skewing
     const sourceList = JSON.parse(JSON.stringify(originalSectionsRef.current[activeSection] || sections[activeSection]));
 
     // 1. Scramble options for all MCQs (guaranteeing a new shuffle each time)
-    const processedList = sourceList.map((q) => {
+    const processedList = sourceList.map((q, idx) => {
+      getQuestionId(q, idx);
       if (q.type !== 'mcq' && q.type !== 'tf') return q;
       if (!Array.isArray(q.options) || q.options.length <= 1) return q;
 
@@ -963,9 +945,6 @@ export default function App() {
     });
     flushBlock();
 
-    // Rebind all current answers to the new scrambled indices
-    rebindAnswersToNewList(result);
-
     const updatedSections = {
       ...sections,
       [activeSection]: result
@@ -985,8 +964,13 @@ export default function App() {
 
   const calculateScore = () => {
     let count = 0;
-    Object.keys(answers).forEach(idx => {
-      if (checkCorrect(questions[idx], answers[idx])) count++;
+    questions.forEach((q, idx) => {
+      if (q.type === 'header') return;
+      const qId = getQuestionId(q, idx);
+      const val = answers[qId] !== undefined ? answers[qId] : answers[idx];
+      if (val !== undefined && checkCorrect(q, val)) {
+        count++;
+      }
     });
     return count;
   };
@@ -1296,11 +1280,12 @@ export default function App() {
                 );
               }
               questionCounter++;
-              const isAns = answers[idx] !== undefined;
-              const isRev = revealed[idx];
-              const userVal = answers[idx];
+              const qId = getQuestionId(q, idx);
+              const isAns = answers[qId] !== undefined || answers[idx] !== undefined;
+              const isRev = revealed[qId] ?? revealed[idx] ?? false;
+              const userVal = answers[qId] !== undefined ? answers[qId] : answers[idx];
               return (
-                <div key={idx} id={`q-card-${idx}`} className={`p-6 md:p-8 rounded-[2rem] border transition-all duration-300 ${th.card} ${isAns ? (checkCorrect(q, userVal) ? (isDark ? 'border-green-500/30' : 'border-green-400 bg-green-50/30') : (isDark ? 'border-red-500/30' : 'border-red-400 bg-red-50/30')) : ''}`}>
+                <div key={qId} id={`q-card-${idx}`} className={`p-6 md:p-8 rounded-[2rem] border transition-all duration-300 ${th.card} ${isAns ? (checkCorrect(q, userVal) ? (isDark ? 'border-green-500/30' : 'border-green-400 bg-green-50/30') : (isDark ? 'border-red-500/30' : 'border-red-400 bg-red-50/30')) : ''}`}>
                   <div className="mb-5 flex justify-between items-center">
                     <span className={`inline-block border px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest ${th.pill}`}>
                       {t[lang].questionLabel} {questionCounter}
@@ -1317,7 +1302,7 @@ export default function App() {
                     <div className="space-y-3">
                       {q.options.map((opt, oIdx) => {
                         const isCorrectOpt = q.correctAnswerIndex === oIdx;
-                        const isSelected = userVal === oIdx;
+                        const isSelected = (typeof userVal === 'string' && userVal === opt) || (typeof userVal === 'number' && userVal === oIdx);
                         let style = th.mcqOpt; 
                         if (isAns || isRev) {
                           if (isCorrectOpt) style = (q.type === 'tf' && !isSelected && isAns) ? (isDark ? "text-zinc-300 opacity-60 border-slate-700/60" : "text-slate-600 opacity-60") : (isDark ? "bg-green-900/30 border-green-500 text-green-400 font-bold" : "bg-green-100 border-green-500 text-green-700 font-bold");
@@ -1325,7 +1310,7 @@ export default function App() {
                           else style = isDark ? "bg-[#1f2937]/20 border-slate-700/50 text-white opacity-80" : "bg-slate-50 border-slate-200 text-slate-500 opacity-70";
                         }
                         return (
-                          <button key={`${opt}-${oIdx}`} disabled={isAns} onClick={() => { setAnswers({...answers, [idx]: oIdx}); if(!isAns) setTimeout(() => scrollToNext(idx), 600); }} className={`w-full text-left p-4 rounded-2xl border transition-colors flex justify-between items-center group ${style}`}>
+                          <button key={`${opt}-${oIdx}`} disabled={isAns} onClick={() => { setAnswers({...answers, [qId]: opt}); if(!isAns) setTimeout(() => scrollToNext(idx), 600); }} className={`w-full text-left p-4 rounded-2xl border transition-colors flex justify-between items-center group ${style}`}>
                             <span className="flex items-start text-sm md:text-base font-normal">
                               {q.type !== 'tf' && <span className="mr-2 opacity-60">{String.fromCharCode(65 + oIdx)})</span>}
                               {opt}
@@ -1342,15 +1327,17 @@ export default function App() {
                       <div className={`grid grid-cols-1 sm:grid-cols-2 gap-px border rounded-2xl overflow-hidden ${th.matchCont}`}>
                         <div className="flex flex-col">
                           {q.colA.map((item, aIdx) => {
-                            const match = isAns ? userVal[aIdx] : (matchTemp[idx] || {})[aIdx];
+                            const currentMatchTemp = matchTemp[qId] || matchTemp[idx] || {};
+                            const match = isAns ? (userVal ? userVal[aIdx] : undefined) : currentMatchTemp[aIdx];
+                            const isSelectedA = matchSelectedA[qId] === aIdx || matchSelectedA[idx] === aIdx;
                             return (
-                              <button key={aIdx} onClick={() => !isAns && setMatchSelectedA({...matchSelectedA, [idx]: matchSelectedA[idx] === aIdx ? null : aIdx})} className={`p-4 text-left border-b min-h-[70px] flex items-center justify-between transition-colors ${matchSelectedA[idx] === aIdx ? th.matchActive : th.matchItem}`}>
+                              <button key={aIdx} onClick={() => !isAns && setMatchSelectedA({...matchSelectedA, [qId]: isSelectedA ? null : aIdx})} className={`p-4 text-left border-b min-h-[70px] flex items-center justify-between transition-colors ${isSelectedA ? th.matchActive : th.matchItem}`}>
                                 <span className="text-sm font-normal">{aIdx + 1}. {item.text}</span>
                                 {match !== undefined && (
                                   <div className="flex items-center gap-2 ml-4">
                                     <span className="text-blue-500 font-bold text-sm">{String.fromCharCode(65 + Number(match))})</span>
                                     {!isAns && (
-                                      <div onClick={(e) => { e.stopPropagation(); const updated = { ...(matchTemp[idx] || {}) }; delete updated[aIdx]; setMatchTemp({...matchTemp, [idx]: updated}); if (matchSelectedA[idx] === aIdx) setMatchSelectedA({...matchSelectedA, [idx]: null}); }} className="p-1 hover:bg-red-500/20 text-slate-400 hover:text-red-500 rounded-full transition-colors"><X className="w-3 h-3" /></div>
+                                      <div onClick={(e) => { e.stopPropagation(); const updated = { ...currentMatchTemp }; delete updated[aIdx]; setMatchTemp({...matchTemp, [qId]: updated}); if (isSelectedA) setMatchSelectedA({...matchSelectedA, [qId]: null}); }} className="p-1 hover:bg-red-500/20 text-slate-400 hover:text-red-500 rounded-full transition-colors"><X className="w-3 h-3" /></div>
                                     )}
                                   </div>
                                 )}
@@ -1360,9 +1347,11 @@ export default function App() {
                         </div>
                         <div className={`flex flex-col border-t sm:border-t-0 sm:border-l ${isDark ? 'border-slate-800/50' : 'border-slate-200'}`}>
                           {q.colB.map((item, bIdx) => {
-                            const isUsed = Object.values(matchTemp[idx] || {}).includes(bIdx);
+                            const currentMatchTemp = matchTemp[qId] || matchTemp[idx] || {};
+                            const isUsed = Object.values(currentMatchTemp).includes(bIdx);
+                            const currentA = matchSelectedA[qId] !== undefined ? matchSelectedA[qId] : matchSelectedA[idx];
                             return (
-                              <button key={bIdx} onClick={() => { if (isAns || matchSelectedA[idx] === null || matchSelectedA[idx] === undefined) return; const currentA = matchSelectedA[idx]; const updated = { ...(matchTemp[idx] || {}) }; Object.keys(updated).forEach(k => { if(updated[k] === bIdx) delete updated[k]; }); updated[currentA] = bIdx; setMatchTemp({...matchTemp, [idx]: updated}); setMatchSelectedA({...matchSelectedA, [idx]: null}); }} className={`p-4 text-left border-b min-h-[70px] flex items-start transition-all ${isUsed && !isAns ? 'opacity-30 grayscale' : th.matchItem}`}>
+                              <button key={bIdx} onClick={() => { if (isAns || currentA === null || currentA === undefined) return; const updated = { ...currentMatchTemp }; Object.keys(updated).forEach(k => { if(updated[k] === bIdx) delete updated[k]; }); updated[currentA] = bIdx; setMatchTemp({...matchTemp, [qId]: updated}); setMatchSelectedA({...matchSelectedA, [qId]: null}); }} className={`p-4 text-left border-b min-h-[70px] flex items-start transition-all ${isUsed && !isAns ? 'opacity-30 grayscale' : th.matchItem}`}>
                                 <span className="text-sm font-bold text-blue-500 mr-2 shrink-0">{String.fromCharCode(65 + bIdx)})</span>
                                 <span className="text-sm font-normal">{item.text}</span>
                               </button>
@@ -1372,16 +1361,16 @@ export default function App() {
                       </div>
                       {!isAns && (
                         <div className="flex flex-col sm:flex-row gap-3 w-full mt-4">
-                          <button onClick={() => { setAnswers({...answers, [idx]: matchTemp[idx]}); setTimeout(() => scrollToNext(idx), 600); }} className="flex-[2] py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold uppercase tracking-widest text-xs flex items-center justify-center gap-2 transition-all"><ClipboardCheck className="w-4 h-4" /> {t[lang].submitMatch}</button>
-                          <button onClick={() => { setMatchTemp({...matchTemp, [idx]: {}}); setMatchSelectedA({...matchSelectedA, [idx]: null}); }} className={`flex-1 py-4 border rounded-xl font-bold uppercase tracking-widest text-xs flex items-center justify-center gap-2 transition-all ${isDark ? 'border-slate-700 hover:bg-slate-800/60 text-slate-300' : 'border-slate-300 hover:bg-slate-100 text-slate-600'}`}><RotateCcw className="w-4 h-4" /> {t[lang].clearAll}</button>
+                          <button onClick={() => { const currentMatchTemp = matchTemp[qId] || matchTemp[idx] || {}; setAnswers({...answers, [qId]: currentMatchTemp}); setTimeout(() => scrollToNext(idx), 600); }} className="flex-[2] py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold uppercase tracking-widest text-xs flex items-center justify-center gap-2 transition-all"><ClipboardCheck className="w-4 h-4" /> {t[lang].submitMatch}</button>
+                          <button onClick={() => { setMatchTemp({...matchTemp, [qId]: {}}); setMatchSelectedA({...matchSelectedA, [qId]: null}); }} className={`flex-1 py-4 border rounded-xl font-bold uppercase tracking-widest text-xs flex items-center justify-center gap-2 transition-all ${isDark ? 'border-slate-700 hover:bg-slate-800/60 text-slate-300' : 'border-slate-300 hover:bg-slate-100 text-slate-600'}`}><RotateCcw className="w-4 h-4" /> {t[lang].clearAll}</button>
                         </div>
                       )}
                     </div>
                   )}
                   {q.type === 'fib' && (
                     <div className="space-y-4">
-                      <form onSubmit={(e) => { e.preventDefault(); const val = (fibInput[idx] || "").trim(); if(val){ setAnswers({...answers, [idx]: val}); setTimeout(()=>scrollToNext(idx), 600); } else setRevealed({...revealed, [idx]: !isRev}); }}>
-                        <input id={`fib-inp-${idx}`} type="text" disabled={isAns} value={fibInput[idx] || ""} onChange={(e)=>setFibInput({...fibInput, [idx]: e.target.value})} placeholder={t[lang].typeAnswer} className={`w-full p-5 rounded-2xl border-2 outline-none transition-all text-lg font-medium placeholder:text-slate-400 ${isAns ? (checkCorrect(q, userVal) ? 'border-green-500 text-green-500 bg-green-500/5' : 'border-red-500 text-red-500 bg-red-500/5') : (isRev ? 'border-blue-500 bg-blue-500/5 text-blue-500' : th.inputBg)}`} />
+                      <form onSubmit={(e) => { e.preventDefault(); const currentFib = fibInput[qId] !== undefined ? fibInput[qId] : (fibInput[idx] || ""); const val = currentFib.trim(); if(val){ setAnswers({...answers, [qId]: val}); setTimeout(()=>scrollToNext(idx), 600); } else setRevealed({...revealed, [qId]: !isRev}); }}>
+                        <input id={`fib-inp-${idx}`} type="text" disabled={isAns} value={fibInput[qId] !== undefined ? fibInput[qId] : (fibInput[idx] || "")} onChange={(e)=>setFibInput({...fibInput, [qId]: e.target.value})} placeholder={t[lang].typeAnswer} className={`w-full p-5 rounded-2xl border-2 outline-none transition-all text-lg font-medium placeholder:text-slate-400 ${isAns ? (checkCorrect(q, userVal) ? 'border-green-500 text-green-500 bg-green-500/5' : 'border-red-500 text-red-500 bg-red-500/5') : (isRev ? 'border-blue-500 bg-blue-500/5 text-blue-500' : th.inputBg)}`} />
                       </form>
                     </div>
                   )}
@@ -1393,10 +1382,10 @@ export default function App() {
                            <p className="text-[10px] font-bold uppercase text-slate-500 tracking-wider">{t[lang].officialAnswer}</p>
                            {q.type === 'matching' && isAns && (
                               <button onClick={() => {
-                                 const newAns = {...answers}; delete newAns[idx]; setAnswers(newAns);
-                                 const newTemp = {...matchTemp}; delete newTemp[idx]; setMatchTemp(newTemp);
-                                 setRevealed({...revealed, [idx]: false});
-                                 setMatchSelectedA({...matchSelectedA, [idx]: null});
+                                 const newAns = {...answers}; delete newAns[qId]; delete newAns[idx]; setAnswers(newAns);
+                                 const newTemp = {...matchTemp}; delete newTemp[qId]; delete newTemp[idx]; setMatchTemp(newTemp);
+                                 setRevealed({...revealed, [qId]: false, [idx]: false});
+                                 setMatchSelectedA({...matchSelectedA, [qId]: null, [idx]: null});
                               }} className="text-[10px] text-blue-500 hover:text-blue-400 font-bold uppercase flex items-center gap-1 transition-colors"><RotateCcw className="w-3 h-3" /> {t[lang].retry}</button>
                            )}
                         </div>
@@ -1429,7 +1418,7 @@ export default function App() {
                   )}
                   {!isAns && (
                     <div className="mt-4 flex justify-end">
-                      <button onClick={() => setRevealed({...revealed, [idx]: !isRev})} className="text-[10px] font-bold text-slate-400 hover:text-slate-500 flex items-center gap-1 uppercase tracking-widest transition-colors">
+                      <button onClick={() => setRevealed({...revealed, [qId]: !isRev})} className="text-[10px] font-bold text-slate-400 hover:text-slate-500 flex items-center gap-1 uppercase tracking-widest transition-colors">
                         <Eye className="w-3 h-3"/> {isRev ? t[lang].hideAnswer : t[lang].showAnswer}
                       </button>
                     </div>
