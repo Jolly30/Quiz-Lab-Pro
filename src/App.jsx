@@ -876,14 +876,18 @@ export default function App() {
           if (matchTemp[prevIdx] !== undefined) newMatchTemp[newIdx] = matchTemp[prevIdx];
 
           const prevVal = answers[prevIdx];
-          if (prevVal !== undefined) {
+          if (prevVal !== undefined && prevVal !== null && prevVal !== '') {
             const prevQ = currentList[prevIdx];
             if ((newQ.type === 'mcq' || newQ.type === 'tf') && Array.isArray(prevQ.options) && Array.isArray(newQ.options)) {
               // Map by selected option text so choice order changes don't corrupt the answer
               const chosenText = typeof prevVal === 'number' ? prevQ.options[prevVal] : prevVal;
               const newOptionIdx = newQ.options.indexOf(chosenText);
-              newAnswers[newIdx] = newOptionIdx !== -1 ? newOptionIdx : 0;
-            } else {
+              if (newOptionIdx !== -1) {
+                newAnswers[newIdx] = newOptionIdx;
+              }
+            } else if (newQ.type === 'fib' && typeof prevVal === 'string' && prevVal.trim().length > 0) {
+              newAnswers[newIdx] = prevVal;
+            } else if (newQ.type === 'matching' && typeof prevVal === 'object') {
               newAnswers[newIdx] = prevVal;
             }
           }
