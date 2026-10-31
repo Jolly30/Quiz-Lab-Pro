@@ -838,18 +838,48 @@ export default function App() {
   // Fisher-Yates Scramble function (Toggles between Scrambled and Original order)
   const handleScrambleCurrentQuiz = () => {
     if (!activeSection || !sections[activeSection]) return;
+    const currentList = sections[activeSection];
 
-    // Reset user in-flight quiz answers every time so it starts completely fresh
-    setAnswers({});
-    setFibInput({});
-    setRevealed({});
-    setMatchTemp({});
-    setMatchSelectedA({});
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    // Helper: Map user responses to the new list so answered questions stay answered!
+    const rebindAnswersToNewList = (newList) => {
+      const newAnswers = {};
+      const newFibInput = {};
+      const newRevealed = {};
+
+      newList.forEach((newQ, newIdx) => {
+        // Find previous index of this question in currentList
+        const prevIdx = currentList.findIndex(
+          oldQ => oldQ.type === newQ.type && (oldQ.question === newQ.question || (oldQ.type === 'header' && oldQ.text === newQ.text))
+        );
+        if (prevIdx !== -1) {
+          if (fibInput[prevIdx] !== undefined) newFibInput[newIdx] = fibInput[prevIdx];
+          if (revealed[prevIdx] !== undefined) newRevealed[newIdx] = revealed[prevIdx];
+
+          const prevVal = answers[prevIdx];
+          if (prevVal !== undefined) {
+            const prevQ = currentList[prevIdx];
+            if ((newQ.type === 'mcq' || newQ.type === 'tf') && Array.isArray(prevQ.options) && Array.isArray(newQ.options)) {
+              // Map by selected option text so choice order changes don't corrupt the answer
+              const chosenText = prevQ.options[prevVal];
+              const newOptionIdx = newQ.options.indexOf(chosenText);
+              newAnswers[newIdx] = newOptionIdx !== -1 ? newOptionIdx : prevVal;
+            } else {
+              newAnswers[newIdx] = prevVal;
+            }
+          }
+        }
+      });
+
+      setAnswers(newAnswers);
+      setFibInput(newFibInput);
+      setRevealed(newRevealed);
+    };
 
     // If currently scrambled, restore original order
     if (isScrambled && originalSectionsRef.current[activeSection]) {
       const originalList = originalSectionsRef.current[activeSection];
+      rebindAnswersToNewList(originalList);
+
       const restoredSections = {
         ...sections,
         [activeSection]: originalList
@@ -912,6 +942,9 @@ export default function App() {
       }
     });
     flushBlock();
+
+    // Rebind all current answers to the new scrambled indices
+    rebindAnswersToNewList(result);
 
     const updatedSections = {
       ...sections,
