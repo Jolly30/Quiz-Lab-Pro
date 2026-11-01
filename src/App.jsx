@@ -758,6 +758,35 @@ export default function App() {
     const finalQuestions = previewQuestions.filter(q => {
       if (q.type === 'header') return (q.text || '').trim().length > 0;
       return (q.question || '').trim().length > 0;
+    }).map(q => {
+      if (q.type === 'matching' && Array.isArray(q.colB) && q.colB.length > 1) {
+        // If colB has not been randomized or matches colA 1-to-1 identically
+        const pairs = (q.colA || []).map((itemA, aIdx) => {
+          const bIdx = q.correctMatches ? (q.correctMatches[aIdx] ?? q.correctMatches[String(aIdx)] ?? aIdx) : aIdx;
+          return { itemA, itemB: q.colB[bIdx] };
+        });
+
+        // Fisher-Yates shuffle the choices in colB so they are scrambled for quiz mode
+        const shuffledB = [...q.colB];
+        for (let i = shuffledB.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [shuffledB[i], shuffledB[j]] = [shuffledB[j], shuffledB[i]];
+        }
+
+        // Recompute correctMatches mapping each itemA to its new index in shuffledB
+        const newCorrectMatches = {};
+        pairs.forEach((pair, aIdx) => {
+          const newBIdx = shuffledB.findIndex(b => b && b.text === pair.itemB?.text);
+          newCorrectMatches[aIdx] = newBIdx >= 0 ? newBIdx : aIdx;
+        });
+
+        return {
+          ...q,
+          colB: shuffledB,
+          correctMatches: newCorrectMatches
+        };
+      }
+      return q;
     });
 
     if (finalQuestions.length === 0) {
@@ -985,6 +1014,33 @@ export default function App() {
         ...q,
         options: newOptions,
         correctAnswerIndex: newCorrectIdx >= 0 ? newCorrectIdx : 0
+      };
+    }).map((q) => {
+      // Also scramble Matching options (colB) on Scramble button click!
+      if (q.type !== 'matching') return q;
+      if (!Array.isArray(q.colA) || !Array.isArray(q.colB) || q.colB.length <= 1) return q;
+
+      const pairs = q.colA.map((itemA, aIdx) => {
+        const bIdx = q.correctMatches ? (q.correctMatches[aIdx] ?? q.correctMatches[String(aIdx)] ?? aIdx) : aIdx;
+        return { itemA, itemB: q.colB[bIdx] };
+      });
+
+      const shuffledB = [...q.colB];
+      for (let i = shuffledB.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffledB[i], shuffledB[j]] = [shuffledB[j], shuffledB[i]];
+      }
+
+      const newMatches = {};
+      pairs.forEach((pair, aIdx) => {
+        const newBIdx = shuffledB.findIndex(b => b && b.text === pair.itemB?.text);
+        newMatches[aIdx] = newBIdx >= 0 ? newBIdx : aIdx;
+      });
+
+      return {
+        ...q,
+        colB: shuffledB,
+        correctMatches: newMatches
       };
     });
 
@@ -1878,11 +1934,24 @@ export default function App() {
                           onChange={(e) => {
                             const newType = e.target.value;
                             const updated = [...previewQuestions];
+                            let newOptions = updated[qIdx].options || [];
+                            let newCorrectIdx = updated[qIdx].correctAnswerIndex ?? 0;
+
+                            if (newType === 'tf') {
+                              newOptions = ['True', 'False'];
+                              newCorrectIdx = 0;
+                            } else if (newType === 'mcq') {
+                              if (!newOptions || newOptions.length < 2 || (newOptions.length === 2 && newOptions[0] === 'True' && newOptions[1] === 'False')) {
+                                newOptions = ['', '', '', ''];
+                              }
+                              newCorrectIdx = 0;
+                            }
+
                             updated[qIdx] = {
                               ...updated[qIdx],
                               type: newType,
-                              options: newType === 'mcq' ? (updated[qIdx].options?.length ? updated[qIdx].options : ['', '', '', '']) : updated[qIdx].options,
-                              correctAnswerIndex: 0
+                              options: newOptions,
+                              correctAnswerIndex: newCorrectIdx
                             };
                             setPreviewQuestions(updated);
                           }}
@@ -1937,8 +2006,41 @@ export default function App() {
                       )}
                     </div>
 
+                    {/* True / False Options */}
+                    {q.type === 'tf' && (
+                      <div className="space-y-2 mt-4">
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">
+                          {t[lang].optionsLabel}
+                        </label>
+                        <div className="grid grid-cols-2 gap-3">
+                          {['True', 'False'].map((tfVal, tfIdx) => {
+                            const isCorrect = (q.options && q.options[q.correctAnswerIndex] === tfVal) || q.correctAnswerIndex === tfIdx;
+                            return (
+                              <button
+                                key={tfVal}
+                                type="button"
+                                onClick={() => {
+                                  const updated = [...previewQuestions];
+                                  updated[qIdx] = {
+                                    ...updated[qIdx],
+                                    options: ['True', 'False'],
+                                    correctAnswerIndex: tfIdx
+                                  };
+                                  setPreviewQuestions(updated);
+                                }}
+                                className={`p-4 rounded-2xl border text-sm font-bold flex items-center justify-between transition-all ${isCorrect ? (isDark ? 'border-green-500 bg-green-500/20 text-green-400 font-black' : 'border-green-500 bg-green-100 text-green-700 font-black') : (isDark ? 'border-slate-800 bg-slate-900/60 text-slate-300 hover:border-slate-700' : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300')}`}
+                              >
+                                <span>{tfVal}</span>
+                                {isCorrect && <Check className="w-5 h-5 text-green-500 stroke-[3]" />}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
                     {/* MCQ Options */}
-                    {(q.type === 'mcq' || q.type === 'tf') && (
+                    {q.type === 'mcq' && (
                       <div className="space-y-2 mt-4">
                         <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">
                           {t[lang].optionsLabel}
