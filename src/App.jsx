@@ -31,7 +31,10 @@ import {
   Cloud,
   Sparkles,
   ExternalLink,
-  Shuffle
+  Shuffle,
+  AlertTriangle,
+  ArrowLeft,
+  Save
 } from 'lucide-react';
 import LiteYouTubeEmbed from 'react-lite-youtube-embed';
 import 'react-lite-youtube-embed/dist/LiteYouTubeEmbed.css';
@@ -113,7 +116,22 @@ const t = {
     moduleCount: "Modules",
     signInGoogle: "Sign in with Google to Sync Devices",
     supportDev: "Support Quiz Lab",
-    specialOffers: "Sponsored Partner"
+    specialOffers: "Sponsored Partner",
+    previewTitle: "Preview & Edit Questions",
+    saveAndPublish: "Save Module",
+    discardPreview: "Discard",
+    addQuestion: "Add Question",
+    addOption: "Add Option",
+    addPair: "Add Pair",
+    questionType: "Question Type",
+    questionPrompt: "Question Text",
+    optionsLabel: "Options (select the radio button for the correct choice)",
+    colALabel: "Column A",
+    colBLabel: "Column B",
+    answersHint: "Hint: Separate alternate answers with / or 'or'",
+    missingAnswerWarn: "Warning: Missing or incomplete answer",
+    discardConfirm: "Discard unsaved preview changes?",
+    noQuestionsInPreview: "No questions parsed. Please try pasting raw text again."
   },
   mm: {
     appTitle: "QUIZ LAB PRO",
@@ -182,7 +200,22 @@ const t = {
     moduleCount: "မော်ဂျူး",
     signInGoogle: "စက်များအကြား ချိတ်ဆက်ရန် Google ဖြင့် ဝင်ပါ",
     supportDev: "Quiz Lab အား ကူညီအားဖြည့်ရန်",
-    specialOffers: "မိတ်ဖက် ကြော်ငြာ"
+    specialOffers: "မိတ်ဖက် ကြော်ငြာ",
+    previewTitle: "မေးခွန်းများ ပြင်ဆင်စစ်ဆေးခြင်း",
+    saveAndPublish: "မော်ဂျူး သိမ်းဆည်းမည်",
+    discardPreview: "ပယ်ဖျက်မည်",
+    addQuestion: "မေးခွန်းအသစ် ထည့်မည်",
+    addOption: "အဖြေရွေးချယ်မှု ထည့်မည်",
+    addPair: "အတွဲ ထည့်မည်",
+    questionType: "မေးခွန်းအမျိုးအစား",
+    questionPrompt: "မေးခွန်း စာသား",
+    optionsLabel: "အဖြေရွေးချယ်မှုများ (မှန်ကန်သော အဖြေဘေးရှိ စက်ဝိုင်းကို ရွေးပါ)",
+    colALabel: "ကော်လံ (က)",
+    colBLabel: "ကော်လံ (ခ)",
+    answersHint: "အကြံပြုချက် - အခြားမှန်ကန်နိုင်သော အဖြေများကို / သို့မဟုတ် or ဖြင့် ခွဲခြားရေးပါ",
+    missingAnswerWarn: "သတိပေးချက် - အဖြေ မပြည့်စုံသေးပါ",
+    discardConfirm: "မသိမ်းဆည်းရသေးသော ပြင်ဆင်မှုများကို ပယ်ဖျက်မည်လား?",
+    noQuestionsInPreview: "မေးခွန်းများ မတွေ့ရှိပါ။ စာသားကို ပြန်လည်ကူးထည့်ပေးပါ။"
   }
 };
 
@@ -225,6 +258,11 @@ export default function App() {
   const [activeSection, setActiveSection] = useState(null);
   const [rawInput, setRawInput] = useState('');
   const [moduleName, setModuleName] = useState('');
+  
+  // Phase 2: Preview & Edit States
+  const [previewQuestions, setPreviewQuestions] = useState([]);
+  const [previewModuleName, setPreviewModuleName] = useState('');
+  const [previewFolderName, setPreviewFolderName] = useState('');
   
   // Custom Combobox Workflow States
   const [showFolderModal, setShowFolderModal] = useState(false);
@@ -665,18 +703,6 @@ export default function App() {
 
         allQuestionsAccumulator = [...allQuestionsAccumulator, ...formattedBatch];
 
-        setSections(prev => {
-          const updated = { ...prev, [name]: allQuestionsAccumulator };
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-          return updated;
-        });
-
-        setModuleFolders(prev => {
-          const updated = { ...prev, [name]: folderToSave };
-          localStorage.setItem(FOLDER_STORAGE_KEY, JSON.stringify(updated));
-          return updated;
-        });
-
         setProgress(5 + ((i + 1) / chunks.length) * 85);
 
         if (i < chunks.length - 1) {
@@ -690,31 +716,20 @@ export default function App() {
         }
       } 
 
-      if (user && getToken()) {
-        fetch('/api/modules', {
-          method: 'POST',
-          headers: apiHeaders(),
-          body: JSON.stringify({
-            display_name: name,
-            content: allQuestionsAccumulator,
-            folder_name: folderToSave
-          })
-        }).catch(err => console.error('Module save sync failed:', err));
-      }
-
       setIsProcessing(false);
       setIsSuccess(true);
       setProgress(100);
       setStatusMsg(t[lang].parsedSuccessfully);
       
-      setExpandedFolders(prev => ({ ...prev, [folderToSave]: true }));
+      // Phase 2: Route directly to Preview & Edit screen with parsed questions
+      setPreviewQuestions(allQuestionsAccumulator);
+      setPreviewModuleName(name);
+      setPreviewFolderName(folderToSave);
 
       setTimeout(() => {
-        setRawInput(''); 
-        setModuleName('');
         setIsSuccess(false);
-        setView('menu');
-      }, 2000);
+        setView('preview');
+      }, 900);
 
    } catch (error) {
       setIsProcessing(false);
@@ -734,6 +749,53 @@ export default function App() {
         alert(t[lang].errorGeneric);
       }
     }
+  };
+
+  // Phase 2: Save and confirm edited preview module
+  const handleSavePreview = () => {
+    const finalName = (previewModuleName || '').trim() || `Module_${Object.keys(sections).length + 1}`;
+    const targetFolder = (previewFolderName || '').trim() || 'Saved Modules';
+    const finalQuestions = previewQuestions.filter(q => {
+      if (q.type === 'header') return (q.text || '').trim().length > 0;
+      return (q.question || '').trim().length > 0;
+    });
+
+    if (finalQuestions.length === 0) {
+      alert(t[lang].noQuestionsInPreview);
+      return;
+    }
+
+    setSections(prev => {
+      const updated = { ...prev, [finalName]: finalQuestions };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      return updated;
+    });
+
+    setModuleFolders(prev => {
+      const updated = { ...prev, [finalName]: targetFolder };
+      localStorage.setItem(FOLDER_STORAGE_KEY, JSON.stringify(updated));
+      return updated;
+    });
+
+    setExpandedFolders(prev => ({ ...prev, [targetFolder]: true }));
+
+    if (user && getToken()) {
+      fetch('/api/modules', {
+        method: 'POST',
+        headers: apiHeaders(),
+        body: JSON.stringify({
+          display_name: finalName,
+          content: finalQuestions,
+          folder_name: targetFolder
+        })
+      }).catch(err => console.error('Preview save sync failed:', err));
+    }
+
+    // Reset import inputs and return to menu
+    setRawInput('');
+    setModuleName('');
+    setPreviewQuestions([]);
+    setView('menu');
   };
 
   const handleDeleteConfirm = async () => {
@@ -1729,6 +1791,378 @@ export default function App() {
 
             {/* Adsterra Banner Placement: Text Import Bottom */}
             <AdBanner width={300} height={250} />
+          </div>
+        )}
+
+        {/* PHASE 2: PREVIEW & EDIT VIEW */}
+        {view === 'preview' && (
+          <div className="space-y-6 pb-40 animate-in fade-in duration-300">
+            {/* Top Toolbar */}
+            <div className={`p-6 rounded-3xl border shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4 sticky top-20 z-40 backdrop-blur-xl ${isDark ? 'bg-[#0B1120]/90 border-slate-800' : 'bg-white/90 border-slate-200'}`}>
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={() => {
+                    if (window.confirm(t[lang].discardConfirm)) {
+                      setView('import');
+                    }
+                  }}
+                  className={`p-2.5 rounded-xl border flex items-center gap-2 text-xs font-bold uppercase transition-colors ${th.btnDefault}`}
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  <span>{t[lang].discardPreview}</span>
+                </button>
+                <div>
+                  <h2 className={`text-lg font-black uppercase italic tracking-tight ${th.textMain}`}>
+                    {t[lang].previewTitle}
+                  </h2>
+                  <p className="text-xs text-slate-500 font-medium">
+                    {previewQuestions.filter(q => q.type !== 'header').length} {t[lang].questions.toLowerCase()}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <input
+                  type="text"
+                  value={previewModuleName}
+                  onChange={(e) => setPreviewModuleName(e.target.value)}
+                  placeholder={t[lang].moduleNamePlaceholder}
+                  className={`px-4 py-2.5 rounded-xl border text-xs font-bold outline-none transition-all ${th.inputBg}`}
+                />
+
+                <select
+                  value={previewFolderName}
+                  onChange={(e) => setPreviewFolderName(e.target.value)}
+                  className={`px-4 py-2.5 rounded-xl border text-xs font-bold outline-none cursor-pointer transition-all ${th.inputBg}`}
+                >
+                  {existingFolders.map(f => (
+                    <option key={f} value={f}>{f}</option>
+                  ))}
+                  {previewFolderName && !existingFolders.includes(previewFolderName) && (
+                    <option value={previewFolderName}>{previewFolderName}</option>
+                  )}
+                </select>
+
+                <button
+                  onClick={handleSavePreview}
+                  className="px-6 py-2.5 bg-green-600 hover:bg-green-500 text-white rounded-xl font-bold uppercase tracking-wider text-xs flex items-center gap-2 shadow-lg transition-all"
+                >
+                  <Save className="w-4 h-4" />
+                  {t[lang].saveAndPublish}
+                </button>
+              </div>
+            </div>
+
+            {/* Questions List */}
+            <div className="space-y-6">
+              {previewQuestions.map((q, qIdx) => {
+                const hasEmptyAnswer = 
+                  (q.type === 'mcq' && (!q.options || q.options.length === 0 || q.correctAnswerIndex >= q.options.length)) ||
+                  (q.type === 'fib' && (!q.answerText || q.answerText.trim() === '')) ||
+                  (q.type === 'matching' && (!q.colA || q.colA.length === 0 || !q.colB || q.colB.length === 0));
+
+                return (
+                  <div 
+                    key={qIdx} 
+                    className={`p-6 rounded-3xl border shadow-md transition-all ${th.card} ${hasEmptyAnswer ? (isDark ? 'border-amber-500/40 bg-amber-500/5' : 'border-amber-400 bg-amber-50/40') : ''}`}
+                  >
+                    {/* Header Row */}
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border ${th.pill}`}>
+                          {t[lang].questionLabel} {qIdx + 1}
+                        </span>
+
+                        <select
+                          value={q.type}
+                          onChange={(e) => {
+                            const newType = e.target.value;
+                            const updated = [...previewQuestions];
+                            updated[qIdx] = {
+                              ...updated[qIdx],
+                              type: newType,
+                              options: newType === 'mcq' ? (updated[qIdx].options?.length ? updated[qIdx].options : ['', '', '', '']) : updated[qIdx].options,
+                              correctAnswerIndex: 0
+                            };
+                            setPreviewQuestions(updated);
+                          }}
+                          className={`px-3 py-1 rounded-lg border text-xs font-bold uppercase tracking-wider outline-none cursor-pointer ${th.inputBg}`}
+                        >
+                          <option value="mcq">MCQ</option>
+                          <option value="fib">Fill-in-the-Blank</option>
+                          <option value="matching">Matching</option>
+                          <option value="tf">True / False</option>
+                        </select>
+
+                        {hasEmptyAnswer && (
+                          <span className="text-[10px] font-bold text-amber-500 uppercase tracking-widest flex items-center gap-1">
+                            <AlertTriangle className="w-3.5 h-3.5" />
+                            {t[lang].missingAnswerWarn}
+                          </span>
+                        )}
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          const updated = previewQuestions.filter((_, idx) => idx !== qIdx);
+                          setPreviewQuestions(updated);
+                        }}
+                        className={`p-2 rounded-xl text-slate-400 hover:text-red-500 transition-colors ${isDark ? 'hover:bg-red-500/10' : 'hover:bg-red-50'}`}
+                        title="Delete question"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {/* Question Text Input */}
+                    <div className="mb-4">
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                        {t[lang].questionPrompt}
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={q.question || ''}
+                        onChange={(e) => {
+                          const updated = [...previewQuestions];
+                          updated[qIdx] = { ...updated[qIdx], question: e.target.value };
+                          setPreviewQuestions(updated);
+                        }}
+                        className={`w-full p-3.5 rounded-xl border text-sm font-medium outline-none leading-relaxed ${th.inputBg}`}
+                      />
+                      {q.question && q.question.includes('<u>') && (
+                        <div className="mt-2 text-xs text-slate-500 flex items-center gap-2">
+                          <span className="font-semibold uppercase text-[10px] tracking-wider">Preview:</span>
+                          <span className={th.textMain}>{renderFormattedQuestion(q.question)}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* MCQ Options */}
+                    {(q.type === 'mcq' || q.type === 'tf') && (
+                      <div className="space-y-2 mt-4">
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">
+                          {t[lang].optionsLabel}
+                        </label>
+                        {(q.options || []).map((opt, oIdx) => {
+                          const isCorrect = q.correctAnswerIndex === oIdx;
+                          return (
+                            <div key={oIdx} className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated = [...previewQuestions];
+                                  updated[qIdx] = { ...updated[qIdx], correctAnswerIndex: oIdx };
+                                  setPreviewQuestions(updated);
+                                }}
+                                className={`w-8 h-8 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${isCorrect ? 'border-green-500 bg-green-500 text-white' : (isDark ? 'border-slate-700 hover:border-slate-500' : 'border-slate-300 hover:border-slate-400')}`}
+                                title="Click to mark as correct answer"
+                              >
+                                {isCorrect ? <Check className="w-4 h-4 stroke-[3]" /> : <span className="text-[10px] font-bold opacity-60">{String.fromCharCode(65 + oIdx)}</span>}
+                              </button>
+
+                              <input
+                                type="text"
+                                value={opt}
+                                onChange={(e) => {
+                                  const updated = [...previewQuestions];
+                                  const nextOptions = [...(updated[qIdx].options || [])];
+                                  nextOptions[oIdx] = e.target.value;
+                                  updated[qIdx] = { ...updated[qIdx], options: nextOptions };
+                                  setPreviewQuestions(updated);
+                                }}
+                                className={`flex-1 p-3 rounded-xl border text-sm outline-none transition-colors ${isCorrect ? (isDark ? 'border-green-500/50 bg-green-500/5 text-green-400' : 'border-green-400 bg-green-50/50 text-green-800') : th.inputBg}`}
+                              />
+
+                              {q.type === 'mcq' && (q.options || []).length > 2 && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = [...previewQuestions];
+                                    const nextOptions = (updated[qIdx].options || []).filter((_, i) => i !== oIdx);
+                                    let nextCorrectIdx = updated[qIdx].correctAnswerIndex;
+                                    if (nextCorrectIdx >= nextOptions.length) nextCorrectIdx = Math.max(0, nextOptions.length - 1);
+                                    updated[qIdx] = { ...updated[qIdx], options: nextOptions, correctAnswerIndex: nextCorrectIdx };
+                                    setPreviewQuestions(updated);
+                                  }}
+                                  className="p-2 text-slate-400 hover:text-red-500 transition-colors"
+                                  title="Remove option"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+
+                        {q.type === 'mcq' && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = [...previewQuestions];
+                              const nextOptions = [...(updated[qIdx].options || []), ''];
+                              updated[qIdx] = { ...updated[qIdx], options: nextOptions };
+                              setPreviewQuestions(updated);
+                            }}
+                            className={`mt-2 px-3 py-1.5 rounded-lg border text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${th.btnDefault}`}
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            {t[lang].addOption}
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* FIB Answer */}
+                    {q.type === 'fib' && (
+                      <div className="space-y-1.5 mt-4">
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                          {t[lang].officialAnswer}
+                        </label>
+                        <input
+                          type="text"
+                          value={q.answerText || ''}
+                          onChange={(e) => {
+                            const updated = [...previewQuestions];
+                            updated[qIdx] = { ...updated[qIdx], answerText: e.target.value };
+                            setPreviewQuestions(updated);
+                          }}
+                          placeholder="e.g. goes / travels or walks"
+                          className={`w-full p-3.5 rounded-xl border text-sm font-mono outline-none ${th.inputBg}`}
+                        />
+                        <p className="text-[10px] text-slate-500 italic">
+                          {t[lang].answersHint}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Matching Pairs */}
+                    {q.type === 'matching' && (
+                      <div className="space-y-3 mt-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                            {t[lang].colALabel} (Item)
+                          </label>
+                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest hidden sm:block">
+                            {t[lang].colBLabel} (Match)
+                          </label>
+                        </div>
+
+                        {(q.colA || []).map((itemA, pIdx) => {
+                          const correctBIdx = q.correctMatches ? (q.correctMatches[pIdx] ?? q.correctMatches[String(pIdx)] ?? pIdx) : pIdx;
+                          const itemB = (q.colB && q.colB[correctBIdx]) ? q.colB[correctBIdx] : { text: '' };
+
+                          return (
+                            <div key={pIdx} className="grid grid-cols-1 sm:grid-cols-2 gap-2 items-center">
+                              <input
+                                type="text"
+                                value={itemA.text || ''}
+                                onChange={(e) => {
+                                  const updated = [...previewQuestions];
+                                  const nextColA = [...(updated[qIdx].colA || [])];
+                                  nextColA[pIdx] = { text: e.target.value };
+                                  updated[qIdx] = { ...updated[qIdx], colA: nextColA };
+                                  setPreviewQuestions(updated);
+                                }}
+                                placeholder={`Item ${pIdx + 1}`}
+                                className={`p-3 rounded-xl border text-sm outline-none ${th.inputBg}`}
+                              />
+
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="text"
+                                  value={itemB.text || ''}
+                                  onChange={(e) => {
+                                    const updated = [...previewQuestions];
+                                    const nextColB = [...(updated[qIdx].colB || [])];
+                                    nextColB[correctBIdx] = { text: e.target.value };
+                                    updated[qIdx] = { ...updated[qIdx], colB: nextColB };
+                                    setPreviewQuestions(updated);
+                                  }}
+                                  placeholder={`Matching answer for ${pIdx + 1}`}
+                                  className={`flex-1 p-3 rounded-xl border text-sm outline-none ${th.inputBg}`}
+                                />
+
+                                {(q.colA || []).length > 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const updated = [...previewQuestions];
+                                      const nextColA = (updated[qIdx].colA || []).filter((_, i) => i !== pIdx);
+                                      const nextColB = (updated[qIdx].colB || []).filter((_, i) => i !== correctBIdx);
+                                      const nextMatches = {};
+                                      nextColA.forEach((_, i) => { nextMatches[i] = i; });
+                                      updated[qIdx] = { ...updated[qIdx], colA: nextColA, colB: nextColB, correctMatches: nextMatches };
+                                      setPreviewQuestions(updated);
+                                    }}
+                                    className="p-2 text-slate-400 hover:text-red-500 transition-colors"
+                                    title="Remove pair"
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = [...previewQuestions];
+                            const nextColA = [...(updated[qIdx].colA || []), { text: '' }];
+                            const nextColB = [...(updated[qIdx].colB || []), { text: '' }];
+                            const nextMatches = { ...(updated[qIdx].correctMatches || {}) };
+                            const newIdx = nextColA.length - 1;
+                            nextMatches[newIdx] = newIdx;
+                            updated[qIdx] = { ...updated[qIdx], colA: nextColA, colB: nextColB, correctMatches: nextMatches };
+                            setPreviewQuestions(updated);
+                          }}
+                          className={`mt-2 px-3 py-1.5 rounded-lg border text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${th.btnDefault}`}
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          {t[lang].addPair}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Bottom Actions */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setPreviewQuestions([
+                    ...previewQuestions,
+                    {
+                      type: 'mcq',
+                      question: '',
+                      options: ['', '', '', ''],
+                      correctAnswerIndex: 0,
+                      answerText: '',
+                      colA: [],
+                      colB: [],
+                      correctMatches: {}
+                    }
+                  ]);
+                }}
+                className={`w-full sm:w-auto px-6 py-4 rounded-2xl border font-bold uppercase tracking-wider text-xs flex items-center justify-center gap-2 shadow-sm transition-all ${th.btnDefault}`}
+              >
+                <Plus className="w-4 h-4" />
+                {t[lang].addQuestion}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSavePreview}
+                className="w-full sm:w-auto px-10 py-4 bg-green-600 hover:bg-green-500 text-white rounded-2xl font-bold uppercase tracking-wider text-xs flex items-center justify-center gap-2 shadow-xl transition-all"
+              >
+                <Save className="w-4 h-4" />
+                {t[lang].saveAndPublish}
+              </button>
+            </div>
           </div>
         )}
 
