@@ -760,20 +760,33 @@ export default function App() {
       return (q.question || '').trim().length > 0;
     }).map(q => {
       if (q.type === 'matching' && Array.isArray(q.colB) && q.colB.length > 1) {
-        // If colB has not been randomized or matches colA 1-to-1 identically
+        // Build the original true pair relationships
         const pairs = (q.colA || []).map((itemA, aIdx) => {
           const bIdx = q.correctMatches ? (q.correctMatches[aIdx] ?? q.correctMatches[String(aIdx)] ?? aIdx) : aIdx;
           return { itemA, itemB: q.colB[bIdx] };
         });
 
-        // Fisher-Yates shuffle the choices in colB so they are scrambled for quiz mode
-        const shuffledB = [...q.colB];
-        for (let i = shuffledB.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [shuffledB[i], shuffledB[j]] = [shuffledB[j], shuffledB[i]];
+        // Derangement / Guaranteed Shuffle: Ensure colB is NEVER in the exact same line as colA
+        let shuffledB = [...q.colB];
+        let attempts = 0;
+        let isSameOrder = true;
+
+        while (isSameOrder && attempts < 20) {
+          attempts++;
+          for (let i = shuffledB.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [shuffledB[i], shuffledB[j]] = [shuffledB[j], shuffledB[i]];
+          }
+          // If 2+ items, ensure at least one (or none if possible) matches the exact same line
+          isSameOrder = shuffledB.every((b, idx) => b && b.text === pairs[idx]?.itemB?.text);
         }
 
-        // Recompute correctMatches mapping each itemA to its new index in shuffledB
+        // If simple 2-item swap is needed when random landed on identical order
+        if (isSameOrder && shuffledB.length === 2) {
+          shuffledB = [shuffledB[1], shuffledB[0]];
+        }
+
+        // Recompute correctMatches mapping each itemA to its new position in shuffledB
         const newCorrectMatches = {};
         pairs.forEach((pair, aIdx) => {
           const newBIdx = shuffledB.findIndex(b => b && b.text === pair.itemB?.text);
@@ -1025,10 +1038,22 @@ export default function App() {
         return { itemA, itemB: q.colB[bIdx] };
       });
 
-      const shuffledB = [...q.colB];
-      for (let i = shuffledB.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [shuffledB[i], shuffledB[j]] = [shuffledB[j], shuffledB[i]];
+      // Guaranteed shuffle: Ensure colB is never in identical order
+      let shuffledB = [...q.colB];
+      let attempts = 0;
+      let isSameOrder = true;
+
+      while (isSameOrder && attempts < 20) {
+        attempts++;
+        for (let i = shuffledB.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [shuffledB[i], shuffledB[j]] = [shuffledB[j], shuffledB[i]];
+        }
+        isSameOrder = shuffledB.every((b, idx) => b && b.text === pairs[idx]?.itemB?.text);
+      }
+
+      if (isSameOrder && shuffledB.length === 2) {
+        shuffledB = [shuffledB[1], shuffledB[0]];
       }
 
       const newMatches = {};
