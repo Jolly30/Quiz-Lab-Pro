@@ -2267,7 +2267,7 @@ export default function App() {
             </div>
 
             {/* Bottom Actions */}
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4">
+            <div className="flex justify-center pt-6">
               <button
                 type="button"
                 onClick={() => {
@@ -2285,19 +2285,10 @@ export default function App() {
                     }
                   ]);
                 }}
-                className={`w-full sm:w-auto px-6 py-4 rounded-2xl border font-bold uppercase tracking-wider text-xs flex items-center justify-center gap-2 shadow-sm transition-all ${th.btnDefault}`}
+                className={`px-8 py-3.5 rounded-2xl border font-bold uppercase tracking-wider text-xs flex items-center justify-center gap-2 shadow-sm transition-all hover:scale-105 ${th.btnDefault}`}
               >
                 <Plus className="w-4 h-4" />
                 {t[lang].addQuestion}
-              </button>
-
-              <button
-                type="button"
-                onClick={handleSavePreview}
-                className="w-full sm:w-auto px-10 py-4 bg-green-600 hover:bg-green-500 text-white rounded-2xl font-bold uppercase tracking-wider text-xs flex items-center justify-center gap-2 shadow-xl transition-all"
-              >
-                <Save className="w-4 h-4" />
-                {t[lang].saveAndPublish}
               </button>
             </div>
           </div>
