@@ -1879,39 +1879,25 @@ export default function App() {
 
         {/* PHASE 2: PREVIEW & EDIT VIEW */}
         {view === 'preview' && (
-          <div className="space-y-6 pb-40 animate-in fade-in duration-300">
-            {/* Top Toolbar */}
-            <div className={`p-4 md:p-5 rounded-2xl md:rounded-3xl border shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-3 sticky top-20 z-40 backdrop-blur-xl ${isDark ? 'bg-[#0B1120]/95 border-slate-800' : 'bg-white/95 border-slate-200'}`}>
-              <div className="flex items-center gap-3 min-w-0">
-                <button 
-                  onClick={() => {
-                    if (window.confirm(t[lang].discardConfirm)) {
-                      setView('import');
-                    }
-                  }}
-                  className={`h-9 px-3 rounded-xl border flex items-center gap-1.5 text-xs font-bold transition-all shrink-0 ${th.btnDefault}`}
-                  title={t[lang].discardPreview}
-                >
-                  <ArrowLeft className="w-3.5 h-3.5" />
-                  <span className="text-[11px] uppercase tracking-wider">{t[lang].discardPreview}</span>
-                </button>
-                <div className="min-w-0">
-                  <h2 className={`text-base font-black uppercase italic tracking-tight truncate leading-tight ${th.textMain}`}>
-                    {t[lang].previewTitle}
-                  </h2>
-                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
-                    {previewQuestions.filter(q => q.type !== 'header').length} {t[lang].questions.toLowerCase()}
-                  </p>
-                </div>
+          <div className="space-y-6 pb-48 animate-in fade-in duration-300">
+            {/* Top Header Card: Title, Count, Module Name & Folder Selection */}
+            <div className={`p-4 md:p-5 rounded-2xl md:rounded-3xl border shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4 backdrop-blur-xl ${isDark ? 'bg-[#0B1120]/95 border-slate-800' : 'bg-white/95 border-slate-200'}`}>
+              <div className="min-w-0">
+                <h2 className={`text-base md:text-lg font-black uppercase italic tracking-tight leading-tight ${th.textMain}`}>
+                  {t[lang].previewTitle}
+                </h2>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-0.5">
+                  {previewQuestions.filter(q => q.type !== 'header').length} {t[lang].questions.toLowerCase()}
+                </p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2.5">
                 <input
                   type="text"
                   value={previewModuleName}
                   onChange={(e) => setPreviewModuleName(e.target.value)}
                   placeholder={t[lang].moduleNamePlaceholder}
-                  className={`h-9 px-3 rounded-xl border text-xs font-bold outline-none transition-all flex-1 sm:flex-initial sm:w-44 ${th.inputBg}`}
+                  className={`h-9 px-3.5 rounded-xl border text-xs font-bold outline-none transition-all flex-1 sm:w-48 ${th.inputBg}`}
                 />
 
                 <select
@@ -1926,14 +1912,6 @@ export default function App() {
                     <option value={previewFolderName}>{previewFolderName}</option>
                   )}
                 </select>
-
-                <button
-                  onClick={handleSavePreview}
-                  className="h-9 px-4 bg-green-600 hover:bg-green-500 text-white rounded-xl font-bold uppercase tracking-wider text-xs flex items-center gap-1.5 shadow-md transition-all shrink-0"
-                >
-                  <Save className="w-3.5 h-3.5" />
-                  <span>{t[lang].saveAndPublish}</span>
-                </button>
               </div>
             </div>
 
@@ -2266,8 +2244,8 @@ export default function App() {
               })}
             </div>
 
-            {/* Bottom Actions */}
-            <div className="flex justify-center pt-6">
+            {/* Bottom Actions: Centered Add Question & Sticky Action Bar */}
+            <div className="flex justify-center pt-4 pb-12">
               <button
                 type="button"
                 onClick={() => {
@@ -2290,6 +2268,33 @@ export default function App() {
                 <Plus className="w-4 h-4" />
                 {t[lang].addQuestion}
               </button>
+            </div>
+
+            {/* Sticky Floating Bottom Bar with Discard & Save Module */}
+            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[92%] max-w-xl z-50 animate-in slide-in-from-bottom-4 duration-300">
+              <div className={`p-2.5 rounded-2xl border shadow-2xl backdrop-blur-xl flex items-center justify-between gap-3 ${isDark ? 'bg-[#0B1120]/95 border-slate-700/80 shadow-black/80' : 'bg-white/95 border-slate-300 shadow-slate-400/30'}`}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm(t[lang].discardConfirm)) {
+                      setView('import');
+                    }
+                  }}
+                  className={`h-11 px-5 rounded-xl border flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-wider transition-all ${isDark ? 'border-slate-700 text-slate-400 hover:text-red-400 hover:border-red-500/40 hover:bg-red-500/10' : 'border-slate-300 text-slate-600 hover:text-red-600 hover:border-red-300 hover:bg-red-50'}`}
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  <span>{t[lang].discardPreview}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSavePreview}
+                  className="h-11 flex-1 sm:flex-initial px-8 bg-green-600 hover:bg-green-500 text-white rounded-xl font-bold uppercase tracking-wider text-xs flex items-center justify-center gap-2 shadow-xl hover:shadow-green-600/30 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{t[lang].saveAndPublish}</span>
+                </button>
+              </div>
             </div>
           </div>
         )}
