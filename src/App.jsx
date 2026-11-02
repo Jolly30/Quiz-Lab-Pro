@@ -1193,15 +1193,19 @@ export default function App() {
             </h1>
           </div>
 
-          <div className={`h-6 w-px mx-2 hidden sm:block ${isDark ? 'bg-white/10' : 'bg-slate-300'}`} />
+          {view !== 'preview' && (
+            <>
+              <div className={`h-6 w-px mx-2 hidden sm:block ${isDark ? 'bg-white/10' : 'bg-slate-300'}`} />
 
-          <button 
-            onClick={startFolderSelection} 
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all text-xs font-bold uppercase tracking-tight ${view === 'import' ? th.btnActive : th.btnDefault}`}
-          >
-            <Plus className="w-4 h-4" />
-            <span className="hidden md:block">{t[lang].addNewModule}</span>
-          </button>
+              <button 
+                onClick={startFolderSelection} 
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all text-xs font-bold uppercase tracking-tight ${view === 'import' ? th.btnActive : th.btnDefault}`}
+              >
+                <Plus className="w-4 h-4" />
+                <span className="hidden md:block">{t[lang].addNewModule}</span>
+              </button>
+            </>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
