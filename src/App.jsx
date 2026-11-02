@@ -2249,9 +2249,9 @@ export default function App() {
               })}
             </div>
 
-            {/* Sticky Floating Bottom Bar with Cancel, Centered Add Question & Save Module */}
-            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[95%] max-w-2xl z-50 animate-in slide-in-from-bottom-4 duration-300">
-              <div className={`p-2 rounded-2xl border shadow-2xl backdrop-blur-xl flex flex-wrap sm:flex-nowrap items-center justify-between gap-2.5 ${isDark ? 'bg-[#0B1120]/95 border-slate-700/80 shadow-black/80' : 'bg-white/95 border-slate-300 shadow-slate-400/30'}`}>
+            {/* Sticky Floating Bottom Bar: Matches top navigation bar theme */}
+            <div className="fixed bottom-5 left-1/2 -translate-x-1/2 w-[95%] max-w-xl z-50 animate-in slide-in-from-bottom-4 duration-300">
+              <div className={`p-2 rounded-2xl border shadow-2xl backdrop-blur-xl flex items-center justify-between gap-2.5 transition-all ${th.navBg}`}>
                 {/* 1. Cancel Button */}
                 <button
                   type="button"
@@ -2260,9 +2260,9 @@ export default function App() {
                       setView('import');
                     }
                   }}
-                  className={`h-11 px-4 sm:px-5 rounded-xl border flex items-center justify-center gap-1.5 text-xs font-bold uppercase tracking-wider transition-all ${isDark ? 'border-slate-700 text-slate-400 hover:text-red-400 hover:border-red-500/40 hover:bg-red-500/10' : 'border-slate-300 text-slate-600 hover:text-red-600 hover:border-red-300 hover:bg-red-50'}`}
+                  className={`h-9 px-4 rounded-xl border flex items-center justify-center gap-1.5 text-xs font-bold uppercase tracking-wider transition-all ${isDark ? 'border-white/5 bg-slate-800/40 text-slate-400 hover:text-red-400 hover:bg-red-500/10' : 'border-slate-200 bg-slate-100 text-slate-600 hover:text-red-600 hover:bg-red-50'}`}
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-3.5 h-3.5" />
                   <span>{t[lang].cancelBtn}</span>
                 </button>
 
@@ -2284,9 +2284,9 @@ export default function App() {
                       }
                     ]);
                   }}
-                  className={`h-11 px-4 sm:px-6 rounded-xl border font-bold uppercase tracking-wider text-xs flex items-center justify-center gap-2 shadow-sm transition-all hover:scale-105 ${th.btnDefault}`}
+                  className={`h-9 px-4 rounded-xl border font-bold uppercase tracking-wider text-xs flex items-center justify-center gap-1.5 transition-all ${th.btnDefault}`}
                 >
-                  <Plus className="w-4 h-4 text-blue-500" />
+                  <Plus className="w-3.5 h-3.5 text-blue-500" />
                   <span>{t[lang].addQuestion}</span>
                 </button>
 
@@ -2294,9 +2294,9 @@ export default function App() {
                 <button
                   type="button"
                   onClick={handleSavePreview}
-                  className="h-11 flex-1 sm:flex-initial px-6 sm:px-8 bg-green-600 hover:bg-green-500 text-white rounded-xl font-bold uppercase tracking-wider text-xs flex items-center justify-center gap-2 shadow-xl hover:shadow-green-600/30 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                  className="h-9 px-5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold uppercase tracking-wider text-xs flex items-center justify-center gap-1.5 shadow-md shadow-blue-900/20 transition-all"
                 >
-                  <Save className="w-4 h-4" />
+                  <Save className="w-3.5 h-3.5" />
                   <span>{t[lang].saveAndPublish}</span>
                 </button>
               </div>
