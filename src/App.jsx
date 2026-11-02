@@ -128,6 +128,7 @@ const t = {
     optionsLabel: "Options (select the radio button for the correct choice)",
     colALabel: "Column A",
     colBLabel: "Column B",
+    matchingSideBySideHint: "Note: Enter matching pairs side-by-side with their correct answers. The app will automatically scramble them for the quiz.",
     answersHint: "Hint: Separate alternate answers with / or 'or'",
     missingAnswerWarn: "Warning: Missing or incomplete answer",
     discardConfirm: "Discard unsaved preview changes?",
@@ -212,6 +213,7 @@ const t = {
     optionsLabel: "အဖြေရွေးချယ်မှုများ (မှန်ကန်သော အဖြေဘေးရှိ စက်ဝိုင်းကို ရွေးပါ)",
     colALabel: "ကော်လံ (က)",
     colBLabel: "ကော်လံ (ခ)",
+    matchingSideBySideHint: "မှတ်ချက် - ကော်လံ (က) နှင့် မှန်ကန်သော အဖြေကို ဘေးချင်းကပ် ထည့်သွင်းပေးပါ။ စာမေးပွဲတွင် စနစ်မှ အလိုအလျောက် ရောမွှေပေးပါမည်။",
     answersHint: "အကြံပြုချက် - အခြားမှန်ကန်နိုင်သော အဖြေများကို / သို့မဟုတ် or ဖြင့် ခွဲခြားရေးပါ",
     missingAnswerWarn: "သတိပေးချက် - အဖြေ မပြည့်စုံသေးပါ",
     discardConfirm: "မသိမ်းဆည်းရသေးသော ပြင်ဆင်မှုများကို ပယ်ဖျက်မည်လား?",
@@ -2166,12 +2168,19 @@ export default function App() {
                     {/* Matching Pairs */}
                     {q.type === 'matching' && (
                       <div className="space-y-3 mt-4">
+                        <div className={`p-3 rounded-xl border flex items-start gap-2.5 text-xs ${isDark ? 'bg-blue-500/10 border-blue-500/20 text-blue-300' : 'bg-blue-50 border-blue-200 text-blue-800'}`}>
+                          <Sparkles className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+                          <span className="font-medium leading-relaxed">
+                            {t[lang].matchingSideBySideHint}
+                          </span>
+                        </div>
+
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                             {t[lang].colALabel} (Item)
                           </label>
                           <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest hidden sm:block">
-                            {t[lang].colBLabel} (Match)
+                            {t[lang].colBLabel} (Correct Match)
                           </label>
                         </div>
 
