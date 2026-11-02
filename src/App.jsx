@@ -1879,42 +1879,43 @@ export default function App() {
         {view === 'preview' && (
           <div className="space-y-6 pb-40 animate-in fade-in duration-300">
             {/* Top Toolbar */}
-            <div className={`p-6 rounded-3xl border shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4 sticky top-20 z-40 backdrop-blur-xl ${isDark ? 'bg-[#0B1120]/90 border-slate-800' : 'bg-white/90 border-slate-200'}`}>
-              <div className="flex items-center gap-3">
+            <div className={`p-4 md:p-5 rounded-2xl md:rounded-3xl border shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-3 sticky top-20 z-40 backdrop-blur-xl ${isDark ? 'bg-[#0B1120]/95 border-slate-800' : 'bg-white/95 border-slate-200'}`}>
+              <div className="flex items-center gap-3 min-w-0">
                 <button 
                   onClick={() => {
                     if (window.confirm(t[lang].discardConfirm)) {
                       setView('import');
                     }
                   }}
-                  className={`p-2.5 rounded-xl border flex items-center gap-2 text-xs font-bold uppercase transition-colors ${th.btnDefault}`}
+                  className={`h-9 px-3 rounded-xl border flex items-center gap-1.5 text-xs font-bold transition-all shrink-0 ${th.btnDefault}`}
+                  title={t[lang].discardPreview}
                 >
-                  <ArrowLeft className="w-4 h-4" />
-                  <span>{t[lang].discardPreview}</span>
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span className="text-[11px] uppercase tracking-wider">{t[lang].discardPreview}</span>
                 </button>
-                <div>
-                  <h2 className={`text-lg font-black uppercase italic tracking-tight ${th.textMain}`}>
+                <div className="min-w-0">
+                  <h2 className={`text-base font-black uppercase italic tracking-tight truncate leading-tight ${th.textMain}`}>
                     {t[lang].previewTitle}
                   </h2>
-                  <p className="text-xs text-slate-500 font-medium">
+                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
                     {previewQuestions.filter(q => q.type !== 'header').length} {t[lang].questions.toLowerCase()}
                   </p>
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-wrap items-center gap-2">
                 <input
                   type="text"
                   value={previewModuleName}
                   onChange={(e) => setPreviewModuleName(e.target.value)}
                   placeholder={t[lang].moduleNamePlaceholder}
-                  className={`px-4 py-2.5 rounded-xl border text-xs font-bold outline-none transition-all ${th.inputBg}`}
+                  className={`h-9 px-3 rounded-xl border text-xs font-bold outline-none transition-all flex-1 sm:flex-initial sm:w-44 ${th.inputBg}`}
                 />
 
                 <select
                   value={previewFolderName}
                   onChange={(e) => setPreviewFolderName(e.target.value)}
-                  className={`px-4 py-2.5 rounded-xl border text-xs font-bold outline-none cursor-pointer transition-all ${th.inputBg}`}
+                  className={`h-9 px-3 rounded-xl border text-xs font-bold outline-none cursor-pointer transition-all ${th.inputBg}`}
                 >
                   {existingFolders.map(f => (
                     <option key={f} value={f}>{f}</option>
@@ -1926,10 +1927,10 @@ export default function App() {
 
                 <button
                   onClick={handleSavePreview}
-                  className="px-6 py-2.5 bg-green-600 hover:bg-green-500 text-white rounded-xl font-bold uppercase tracking-wider text-xs flex items-center gap-2 shadow-lg transition-all"
+                  className="h-9 px-4 bg-green-600 hover:bg-green-500 text-white rounded-xl font-bold uppercase tracking-wider text-xs flex items-center gap-1.5 shadow-md transition-all shrink-0"
                 >
-                  <Save className="w-4 h-4" />
-                  {t[lang].saveAndPublish}
+                  <Save className="w-3.5 h-3.5" />
+                  <span>{t[lang].saveAndPublish}</span>
                 </button>
               </div>
             </div>
