@@ -129,7 +129,7 @@ const t = {
     optionsLabel: "Options (select the radio button for the correct choice)",
     colALabel: "Column A",
     colBLabel: "Column B",
-    matchingSideBySideHint: "Note: Enter matching pairs side-by-side with their correct answers. The app will automatically scramble them for the quiz.",
+    matchingSideBySideHint: "Note: Pair items with their correct answer side-by-side (auto-scrambled in quiz).",
     answersHint: "Hint: Separate alternate answers with / or 'or'",
     missingAnswerWarn: "Warning: Missing or incomplete answer",
     discardConfirm: "Cancel and discard unsaved preview changes?",
@@ -214,7 +214,7 @@ const t = {
     optionsLabel: "အဖြေရွေးချယ်မှုများ (မှန်ကန်သော အဖြေဘေးရှိ စက်ဝိုင်းကို ရွေးပါ)",
     colALabel: "ကော်လံ (က)",
     colBLabel: "ကော်လံ (ခ)",
-    matchingSideBySideHint: "မှတ်ချက် - ကော်လံ (က) နှင့် မှန်ကန်သော အဖြေကို ဘေးချင်းကပ် ထည့်သွင်းပေးပါ။ စာမေးပွဲတွင် စနစ်မှ အလိုအလျောက် ရောမွှေပေးပါမည်။",
+    matchingSideBySideHint: "မှတ်ချက် - ကော်လံ (က) နှင့် မှန်ကန်သောအဖြေကို ဘေးချင်းကပ် ထည့်သွင်းပါ (စာမေးပွဲတွင် အလိုအလျောက် ရောမွှေပါမည်)။",
     answersHint: "အကြံပြုချက် - အခြားမှန်ကန်နိုင်သော အဖြေများကို / သို့မဟုတ် or ဖြင့် ခွဲခြားရေးပါ",
     missingAnswerWarn: "သတိပေးချက် - အဖြေ မပြည့်စုံသေးပါ",
     discardConfirm: "မသိမ်းဆည်းရသေးသော ပြင်ဆင်မှုများကို ပယ်ဖျက်မည်လား?",
@@ -2151,12 +2151,9 @@ export default function App() {
                     {/* Matching Pairs */}
                     {q.type === 'matching' && (
                       <div className="space-y-3 mt-4">
-                        <div className={`p-3 rounded-xl border flex items-start gap-2.5 text-xs ${isDark ? 'bg-blue-500/10 border-blue-500/20 text-blue-300' : 'bg-blue-50 border-blue-200 text-blue-800'}`}>
-                          <Sparkles className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
-                          <span className="font-medium leading-relaxed">
-                            {t[lang].matchingSideBySideHint}
-                          </span>
-                        </div>
+                        <p className={`text-[11px] font-medium italic ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                          {t[lang].matchingSideBySideHint}
+                        </p>
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
@@ -2294,7 +2291,7 @@ export default function App() {
                 <button
                   type="button"
                   onClick={handleSavePreview}
-                  className="h-9 px-5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold uppercase tracking-wider text-xs flex items-center justify-center gap-1.5 shadow-md shadow-blue-900/20 transition-all"
+                  className="h-9 px-5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold uppercase tracking-wider text-xs flex items-center justify-center gap-1.5 shadow-md shadow-emerald-900/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
                 >
                   <Save className="w-3.5 h-3.5" />
                   <span>{t[lang].saveAndPublish}</span>
