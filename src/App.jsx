@@ -119,7 +119,8 @@ const t = {
     specialOffers: "Sponsored Partner",
     previewTitle: "Preview & Edit Questions",
     saveAndPublish: "Save Module",
-    discardPreview: "Discard",
+    cancelBtn: "Cancel",
+    discardPreview: "Cancel",
     addQuestion: "Add Question",
     addOption: "Add Option",
     addPair: "Add Pair",
@@ -131,7 +132,7 @@ const t = {
     matchingSideBySideHint: "Note: Enter matching pairs side-by-side with their correct answers. The app will automatically scramble them for the quiz.",
     answersHint: "Hint: Separate alternate answers with / or 'or'",
     missingAnswerWarn: "Warning: Missing or incomplete answer",
-    discardConfirm: "Discard unsaved preview changes?",
+    discardConfirm: "Cancel and discard unsaved preview changes?",
     noQuestionsInPreview: "No questions parsed. Please try pasting raw text again."
   },
   mm: {
@@ -2244,35 +2245,10 @@ export default function App() {
               })}
             </div>
 
-            {/* Bottom Actions: Centered Add Question & Sticky Action Bar */}
-            <div className="flex justify-center pt-4 pb-12">
-              <button
-                type="button"
-                onClick={() => {
-                  setPreviewQuestions([
-                    ...previewQuestions,
-                    {
-                      type: 'mcq',
-                      question: '',
-                      options: ['', '', '', ''],
-                      correctAnswerIndex: 0,
-                      answerText: '',
-                      colA: [],
-                      colB: [],
-                      correctMatches: {}
-                    }
-                  ]);
-                }}
-                className={`px-8 py-3.5 rounded-2xl border font-bold uppercase tracking-wider text-xs flex items-center justify-center gap-2 shadow-sm transition-all hover:scale-105 ${th.btnDefault}`}
-              >
-                <Plus className="w-4 h-4" />
-                {t[lang].addQuestion}
-              </button>
-            </div>
-
-            {/* Sticky Floating Bottom Bar with Discard & Save Module */}
-            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[92%] max-w-xl z-50 animate-in slide-in-from-bottom-4 duration-300">
-              <div className={`p-2.5 rounded-2xl border shadow-2xl backdrop-blur-xl flex items-center justify-between gap-3 ${isDark ? 'bg-[#0B1120]/95 border-slate-700/80 shadow-black/80' : 'bg-white/95 border-slate-300 shadow-slate-400/30'}`}>
+            {/* Sticky Floating Bottom Bar with Cancel, Centered Add Question & Save Module */}
+            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[95%] max-w-2xl z-50 animate-in slide-in-from-bottom-4 duration-300">
+              <div className={`p-2 rounded-2xl border shadow-2xl backdrop-blur-xl flex flex-wrap sm:flex-nowrap items-center justify-between gap-2.5 ${isDark ? 'bg-[#0B1120]/95 border-slate-700/80 shadow-black/80' : 'bg-white/95 border-slate-300 shadow-slate-400/30'}`}>
+                {/* 1. Cancel Button */}
                 <button
                   type="button"
                   onClick={() => {
@@ -2280,16 +2256,41 @@ export default function App() {
                       setView('import');
                     }
                   }}
-                  className={`h-11 px-5 rounded-xl border flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-wider transition-all ${isDark ? 'border-slate-700 text-slate-400 hover:text-red-400 hover:border-red-500/40 hover:bg-red-500/10' : 'border-slate-300 text-slate-600 hover:text-red-600 hover:border-red-300 hover:bg-red-50'}`}
+                  className={`h-11 px-4 sm:px-5 rounded-xl border flex items-center justify-center gap-1.5 text-xs font-bold uppercase tracking-wider transition-all ${isDark ? 'border-slate-700 text-slate-400 hover:text-red-400 hover:border-red-500/40 hover:bg-red-500/10' : 'border-slate-300 text-slate-600 hover:text-red-600 hover:border-red-300 hover:bg-red-50'}`}
                 >
-                  <ArrowLeft className="w-4 h-4" />
-                  <span>{t[lang].discardPreview}</span>
+                  <X className="w-4 h-4" />
+                  <span>{t[lang].cancelBtn}</span>
                 </button>
 
+                {/* 2. Add Question Button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPreviewQuestions([
+                      ...previewQuestions,
+                      {
+                        type: 'mcq',
+                        question: '',
+                        options: ['', '', '', ''],
+                        correctAnswerIndex: 0,
+                        answerText: '',
+                        colA: [],
+                        colB: [],
+                        correctMatches: {}
+                      }
+                    ]);
+                  }}
+                  className={`h-11 px-4 sm:px-6 rounded-xl border font-bold uppercase tracking-wider text-xs flex items-center justify-center gap-2 shadow-sm transition-all hover:scale-105 ${th.btnDefault}`}
+                >
+                  <Plus className="w-4 h-4 text-blue-500" />
+                  <span>{t[lang].addQuestion}</span>
+                </button>
+
+                {/* 3. Save Module Button */}
                 <button
                   type="button"
                   onClick={handleSavePreview}
-                  className="h-11 flex-1 sm:flex-initial px-8 bg-green-600 hover:bg-green-500 text-white rounded-xl font-bold uppercase tracking-wider text-xs flex items-center justify-center gap-2 shadow-xl hover:shadow-green-600/30 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                  className="h-11 flex-1 sm:flex-initial px-6 sm:px-8 bg-green-600 hover:bg-green-500 text-white rounded-xl font-bold uppercase tracking-wider text-xs flex items-center justify-center gap-2 shadow-xl hover:shadow-green-600/30 hover:scale-[1.02] active:scale-[0.98] transition-all"
                 >
                   <Save className="w-4 h-4" />
                   <span>{t[lang].saveAndPublish}</span>
