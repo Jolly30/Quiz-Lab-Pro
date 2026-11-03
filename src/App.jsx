@@ -34,10 +34,15 @@ import {
   Shuffle,
   AlertTriangle,
   ArrowLeft,
-  Save
+  Save,
+  UploadCloud,
+  FileText,
+  FileCheck2,
+  Loader2
 } from 'lucide-react';
 import LiteYouTubeEmbed from 'react-lite-youtube-embed';
 import 'react-lite-youtube-embed/dist/LiteYouTubeEmbed.css';
+import { parseDocumentFile } from './utils/fileParser';
 
 // --- SESSION & API PROXY HELPERS ---
 const SMARTLINK_URL = 'https://asiafilm.org/4/5c85bc5c109e3e2b1066cd761bb45fa1';
@@ -133,7 +138,16 @@ const t = {
     answersHint: "Hint: Separate alternate answers with / or 'or'",
     missingAnswerWarn: "Warning: Missing or incomplete answer",
     discardConfirm: "Cancel and discard unsaved preview changes?",
-    noQuestionsInPreview: "No questions parsed. Please try pasting raw text again."
+    noQuestionsInPreview: "No questions parsed. Please try pasting raw text again.",
+    dropzoneTitle: "Upload Document (.docx, .pdf, .txt)",
+    dropzoneSubtitle: "Drag & drop your file here, or click to browse",
+    dropzoneActive: "Drop your file here...",
+    readingFile: "Reading document...",
+    fileExtractedNotice: "Extracted from file:",
+    scannedPdfWarn: "Notice: Low text density detected. If this is a scanned PDF, optical character recognition will be applied.",
+    invalidFileType: "Please upload a supported file: .docx, .pdf, or .txt",
+    fileSizeError: "File exceeds 10MB limit. Please choose a smaller file.",
+    pasteOrTypeHint: "Or paste / edit text manually:"
   },
   mm: {
     appTitle: "QUIZ LAB PRO",
@@ -218,7 +232,16 @@ const t = {
     answersHint: "အကြံပြုချက် - အခြားမှန်ကန်နိုင်သော အဖြေများကို / သို့မဟုတ် or ဖြင့် ခွဲခြားရေးပါ",
     missingAnswerWarn: "သတိပေးချက် - အဖြေ မပြည့်စုံသေးပါ",
     discardConfirm: "မသိမ်းဆည်းရသေးသော ပြင်ဆင်မှုများကို ပယ်ဖျက်မည်လား?",
-    noQuestionsInPreview: "မေးခွန်းများ မတွေ့ရှိပါ။ စာသားကို ပြန်လည်ကူးထည့်ပေးပါ။"
+    noQuestionsInPreview: "မေးခွန်းများ မတွေ့ရှိပါ။ စာသားကို ပြန်လည်ကူးထည့်ပေးပါ။",
+    dropzoneTitle: "ဖိုင် တင်သွင်းရန် (.docx, .pdf, .txt)",
+    dropzoneSubtitle: "ဖိုင်ကို ဤနေရာသို့ ဆွဲထည့်ပါ သို့မဟုတ် ရွေးချယ်ရန် နှိပ်ပါ",
+    dropzoneActive: "ဖိုင်ကို ဤနေရာတွင် လွှတ်ချပါ...",
+    readingFile: "ဖိုင်မှ စာသားများကို ဖတ်ရှုနေပါသည်...",
+    fileExtractedNotice: "ဖိုင်မှ ဖတ်ရှုရရှိသော စာသား -",
+    scannedPdfWarn: "သတိပေးချက် - စာသားပါဝင်မှုနည်းပါးသော PDF ဖြစ်နေသဖြင့် စာလုံးဖတ်စနစ်ဖြင့် အလိုအလျောက် ခွဲခြမ်းပေးပါမည်။",
+    invalidFileType: "ကျေးဇူးပြု၍ .docx, .pdf သို့မဟုတ် .txt ဖိုင်များကိုသာ အသုံးပြုပေးပါ။",
+    fileSizeError: "ဖိုင်ဆိုဒ် 10MB ထက်ကျော်လွန်နေပါသည်။ ပိုမိုသေးငယ်သောဖိုင်ကို ရွေးချယ်ပါ။",
+    pasteOrTypeHint: "သို့မဟုတ် စာသားများကို ကိုယ်တိုင် ကူးထည့်ပါ -"
   }
 };
 
@@ -266,6 +289,13 @@ export default function App() {
   const [previewQuestions, setPreviewQuestions] = useState([]);
   const [previewModuleName, setPreviewModuleName] = useState('');
   const [previewFolderName, setPreviewFolderName] = useState('');
+
+  // Phase 3: Direct File Ingestion States
+  const [uploadedFileName, setUploadedFileName] = useState('');
+  const [isFileReading, setIsFileReading] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [isScannedFileNotice, setIsScannedFileNotice] = useState(false);
+  const fileInputRef = useRef(null);
   
   // Custom Combobox Workflow States
   const [showFolderModal, setShowFolderModal] = useState(false);
@@ -594,6 +624,53 @@ export default function App() {
           folder_name: moduleFolders[oldName] || 'Saved Modules'
         })
       }).catch(err => console.error('Module rename sync failed:', err));
+    }
+  };
+
+  // Phase 3: Direct File Upload Handler (.docx, .pdf, .txt)
+  const handleFileUpload = async (file) => {
+    if (!file) return;
+
+    // Check size limit: 10MB
+    if (file.size > 10 * 1024 * 1024) {
+      alert(t[lang].fileSizeError);
+      return;
+    }
+
+    const nameLower = (file.name || '').toLowerCase();
+    if (!nameLower.endsWith('.docx') && !nameLower.endsWith('.pdf') && !nameLower.endsWith('.txt')) {
+      alert(t[lang].invalidFileType);
+      return;
+    }
+
+    try {
+      setIsFileReading(true);
+      setIsScannedFileNotice(false);
+
+      const parsed = await parseDocumentFile(file);
+      
+      if (parsed && parsed.text) {
+        setRawInput(parsed.text);
+        setUploadedFileName(file.name);
+        
+        // Auto-fill module name if not already set
+        if (!moduleName.trim()) {
+          const autoTitle = file.name.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
+          setModuleName(autoTitle);
+        }
+
+        if (parsed.isScanned) {
+          setIsScannedFileNotice(true);
+        }
+      } else {
+        alert(lang === 'en' ? 'Could not extract text from this file.' : 'ဖိုင်မှ စာသားများ မထုတ်ယူနိုင်ပါ။');
+      }
+    } catch (err) {
+      console.error('File parsing error:', err);
+      alert((lang === 'en' ? 'Failed to read file: ' : 'ဖိုင်ဖတ်ရှုရာတွင် ချို့ယွင်းချက်ရှိပါသည်: ') + (err.message || ''));
+    } finally {
+      setIsFileReading(false);
+      setIsDragOver(false);
     }
   };
 
@@ -1771,6 +1848,86 @@ export default function App() {
             </div>
             
             <input type="text" value={moduleName} onChange={(e)=>setModuleName(e.target.value)} placeholder={t[lang].moduleNamePlaceholder} className={`w-full p-4 rounded-xl border mb-4 font-medium outline-none transition-all ${th.inputBg}`} />
+
+            {/* PHASE 3: DIRECT FILE UPLOAD DROPZONE */}
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              onChange={(e) => {
+                if (e.target.files && e.target.files[0]) {
+                  handleFileUpload(e.target.files[0]);
+                }
+              }} 
+              accept=".docx,.pdf,.txt" 
+              className="hidden" 
+            />
+
+            <div
+              onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+              onDragLeave={() => setIsDragOver(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setIsDragOver(false);
+                if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                  handleFileUpload(e.dataTransfer.files[0]);
+                }
+              }}
+              onClick={() => fileInputRef.current?.click()}
+              className={`mb-6 p-6 rounded-2xl border-2 border-dashed transition-all cursor-pointer flex flex-col items-center justify-center text-center group ${
+                isDragOver
+                  ? 'border-blue-500 bg-blue-500/10 scale-[1.01]'
+                  : isDark 
+                    ? 'border-slate-700/80 hover:border-blue-500/50 hover:bg-slate-800/40 bg-[#0B1120]' 
+                    : 'border-slate-300 hover:border-blue-400 hover:bg-blue-50/50 bg-slate-50/50'
+              }`}
+            >
+              <div className={`p-3.5 rounded-2xl mb-3 transition-transform group-hover:scale-110 ${
+                isDark ? 'bg-blue-500/10 text-blue-400' : 'bg-blue-100 text-blue-600'
+              }`}>
+                {isFileReading ? (
+                  <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+                ) : uploadedFileName ? (
+                  <FileCheck2 className="w-6 h-6 text-green-500" />
+                ) : (
+                  <UploadCloud className="w-6 h-6" />
+                )}
+              </div>
+
+              <h4 className={`text-sm font-black uppercase tracking-wider mb-1 ${th.textMain}`}>
+                {isFileReading 
+                  ? t[lang].readingFile 
+                  : uploadedFileName 
+                    ? `${t[lang].fileExtractedNotice} ${uploadedFileName}` 
+                    : t[lang].dropzoneTitle}
+              </h4>
+
+              <p className="text-xs text-slate-500 font-medium">
+                {uploadedFileName ? 'Click or drop another file to replace' : t[lang].dropzoneSubtitle}
+              </p>
+
+              {isScannedFileNotice && (
+                <div className="mt-3 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-500 text-[11px] font-semibold flex items-center gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                  <span>{t[lang].scannedPdfWarn}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5" />
+                {t[lang].pasteOrTypeHint}
+              </label>
+              {rawInput && (
+                <button
+                  type="button"
+                  onClick={() => { setRawInput(''); setUploadedFileName(''); setIsScannedFileNotice(false); }}
+                  className="text-[10px] font-bold text-slate-400 hover:text-red-500 uppercase tracking-widest transition-colors"
+                >
+                  Clear Text
+                </button>
+              )}
+            </div>
             
             <textarea 
               value={rawInput} 
