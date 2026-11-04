@@ -26,6 +26,8 @@ function cleanMammothHtml(html) {
     .replace(/<\/p>/gi, '\n\n')
     .replace(/<\/div>/gi, '\n')
     .replace(/<\/li>/gi, '\n')
+    .replace(/<\/td>/gi, '\t')
+    .replace(/<\/th>/gi, '\t')
     .replace(/<\/tr>/gi, '\n');
 
   // Strip all HTML tags EXCEPT <u> and </u>

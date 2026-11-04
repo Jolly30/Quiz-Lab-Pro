@@ -190,6 +190,25 @@ Answers: A-3, B-1
 "B-1" means item "B" maps to the text labeled "1" ("Ensure pump has enough fuel").
 Find those extracted strings in your colB array and use their actual 0-based integer positions to build the correctMatches object.
 
+EXAMPLE 10: 2-COLUMN TABLES WITH ANSWER KEY BELOW (WORD / MARKDOWN TABLES)
+When matching items are presented in a two-column table (either markdown pipes | col1 | col2 | or tab-separated from Word) followed by an answer key below:
+[RAW TEXT]:
+Out planet
+| earth   | blue   |
+| satun   | red   |
+Ans earth ---> red
+Satun blue
+[CORRECT BEHAVIOR]:
+- Column 1 contains the items for colA: ["earth", "satun"].
+- Column 2 contains the targets for colB: ["blue", "red"].
+- The answer key maps which item connects to which target:
+  - "earth ---> red": "earth" (index 0) maps to "red" (which is index 1 in colB ["blue", "red"]). So "0": 1.
+  - "Satun blue": "satun" (index 1) maps to "blue" (which is index 0 in colB). So "1": 0.
+- NEVER put answer keys ("Ans earth ---> red", "Satun blue", etc.) or headers as pairs in colA or colB!
+- colA and colB MUST only contain the actual terms to match.
+[CORRECT JSON OUTPUT]:
+{"type": "matching", "q_num": 5, "question": "Out planet", "colA": [{"text": "earth"}, {"text": "satun"}], "colB": [{"text": "blue"}, {"text": "red"}], "correctMatches": {"0": 1, "1": 0}}
+
 REQUIRED JSON FORMATS:
 MCQ: {"type": "mcq", "q_num": 1, "question": "text", "options": ["A", "B"], "correctAnswerIndex": 0}
 FIB: {"type": "fib", "q_num": 2, "question": "text", "answerText": "answer"}
