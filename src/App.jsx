@@ -301,6 +301,7 @@ export default function App() {
   // Phase 3: Direct File Ingestion States
   const [importMode, setImportMode] = useState('file'); // 'file' | 'text'
   const [uploadedFileName, setUploadedFileName] = useState('');
+  const [uploadedPdfBase64, setUploadedPdfBase64] = useState(null);
   const [isFileReading, setIsFileReading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isScannedFileNotice, setIsScannedFileNotice] = useState(false);
@@ -658,8 +659,9 @@ export default function App() {
 
       const parsed = await parseDocumentFile(file);
       
-      if (parsed && parsed.text) {
-        setRawInput(parsed.text);
+      if (parsed && (parsed.text || parsed.pdfBase64)) {
+        setRawInput(parsed.text || '');
+        setUploadedPdfBase64(parsed.pdfBase64 || null);
         setUploadedFileName(file.name);
         
         // Auto-fill module name if not already set
@@ -668,7 +670,7 @@ export default function App() {
           setModuleName(autoTitle);
         }
 
-        if (parsed.isScanned) {
+        if (parsed.isScanned || parsed.pdfBase64) {
           setIsScannedFileNotice(true);
         }
       } else {
@@ -684,32 +686,17 @@ export default function App() {
   };
 
   const handleAI_Import = async () => {
-    if (!rawInput) return;
+    if (!rawInput && !uploadedPdfBase64) return;
 
     abortControllerRef.current = new AbortController();
     const signal = abortControllerRef.current.signal;
 
     setIsProcessing(true);
     setIsSuccess(false);
-    setStatusMsg(t[lang].chunkingData);
+    setStatusMsg(uploadedPdfBase64 ? (lang === 'en' ? 'Scanning document with AI OCR...' : 'AI ဖြင့် စာရွက်စာတမ်းကို ဖတ်ရှုနေပါသည်...') : t[lang].chunkingData);
     setProgress(5);
 
     try {
-      const lines = rawInput.split(/\n+/);
-      const MAX_CHARS = 20000; 
-      const chunks = [];
-      let currentChunk = "";
-
-      for (const line of lines) {
-        if (currentChunk.length + line.length > MAX_CHARS) {
-          if (currentChunk.trim()) chunks.push(currentChunk.trim());
-          currentChunk = line + "\n";
-        } else {
-          currentChunk += line + "\n";
-        }
-      }
-      if (currentChunk.trim()) chunks.push(currentChunk.trim());
-
       let allQuestionsAccumulator = [];
       
       // THE FIX: Smart Auto-Renamer
@@ -725,60 +712,35 @@ export default function App() {
       
       const folderToSave = selectedFolderForImport.trim();
 
-      for (let i = 0; i < chunks.length; i++) {
-        if (signal.aborted) throw new DOMException('Aborted', 'AbortError'); 
+      // IF SCANNED/IMAGE PDF: Send directly to Gemini Vision OCR
+      if (uploadedPdfBase64) {
+        setStatusMsg(lang === 'en' ? 'AI Vision reading document pages...' : 'AI စာလုံးဖတ်စနစ်ဖြင့် စာရွက်စာတမ်းကို ခွဲခြမ်းနေပါသည်...');
+        setProgress(30);
 
-        let attempt = 0;
-        let maxAttempts = 3; 
-        let chunkData = null;
+        const apiBody = user
+          ? { pdfBase64: uploadedPdfBase64, uid: user.id || user.uid, sessionToken: getToken() }
+          : { pdfBase64: uploadedPdfBase64, userCustomKey };
 
-        while (attempt < maxAttempts) {
-          if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+        const response = await fetch('/api/parse', {
+          method: 'POST',
+          headers: apiHeaders(),
+          body: JSON.stringify(apiBody),
+          signal: signal
+        });
 
-          setStatusMsg(lang === 'en' 
-            ? `Parsing batch ${i + 1} of ${chunks.length}... ${attempt > 0 ? `(Retry ${attempt})` : ''}` 
-            : `အစု ${i + 1} / ${chunks.length} ကို လုပ်ဆောင်နေပါသည်... ${attempt > 0 ? `(အကြိမ် ${attempt})` : ''}`
-          );
-          console.log(`--- EXACT TEXT SENT TO AI (Batch ${i+1}) ---`, JSON.stringify(chunks[i]));
-          // Send sessionToken/uid (server reads key from Supabase) or userCustomKey
-          const apiBody = user
-            ? { rawInput: chunks[i], uid: user.id || user.uid, sessionToken: getToken() }
-            : { rawInput: chunks[i], userCustomKey };
-          const response = await fetch('/api/parse', {
-            method: 'POST',
-            headers: apiHeaders(),
-            body: JSON.stringify(apiBody),
-            signal: signal
-          });
-
-          if (response.ok) {
-            chunkData = await response.json();
-            break; 
-          }
-
+        if (!response.ok) {
           let errorMessage = "Server error.";
           try {
-            const errorData = await response.json();
-            errorMessage = (errorData.error || "").toLowerCase();
-          } catch (err) { console.warn('Error response parse failed:', err.message); }
-
-          if (errorMessage.includes('demand') || errorMessage.includes('busy') || response.status === 503) {
-            attempt++;
-            if (attempt >= maxAttempts) throw new Error("High Demand");
-            
-            setStatusMsg(lang === 'en' ? `Server busy. Waiting 15s...` : `ဆာဗာ အလုပ်များနေပါသည်။ ၁၅ စက္ကန့် စောင့်ပါ...`);
-            await new Promise(resolve => {
-               const timeout = setTimeout(resolve, 15000); 
-               signal.addEventListener('abort', () => { clearTimeout(timeout); resolve(); });
-            });
-          } else {
-            throw new Error(errorMessage); 
-          }
+            const errJson = await response.json();
+            errorMessage = errJson.error || errorMessage;
+          } catch(e) {}
+          throw new Error(errorMessage);
         }
 
-        const newQuestions = Array.isArray(chunkData) ? chunkData : (chunkData.questions || []);
-        
-        const formattedBatch = newQuestions.map((q) => ({
+        const parsedData = await response.json();
+        const newQuestions = Array.isArray(parsedData) ? parsedData : (parsedData.questions || []);
+
+        allQuestionsAccumulator = newQuestions.map(q => ({
           ...q,
           type: (q.type || 'mcq').toLowerCase(),
           question: q.question || "Question text missing",
@@ -789,19 +751,101 @@ export default function App() {
           colB: q.colB || [],
           correctMatches: q.correctMatches || {}
         }));
+      } else {
+        // STANDARD TEXT / DOCX BATCH PARSING
+        const lines = rawInput.split(/\n+/);
+        const MAX_CHARS = 20000; 
+        const chunks = [];
+        let currentChunk = "";
 
-        allQuestionsAccumulator = [...allQuestionsAccumulator, ...formattedBatch];
+        for (const line of lines) {
+          if (currentChunk.length + line.length > MAX_CHARS) {
+            if (currentChunk.trim()) chunks.push(currentChunk.trim());
+            currentChunk = line + "\n";
+          } else {
+            currentChunk += line + "\n";
+          }
+        }
+        if (currentChunk.trim()) chunks.push(currentChunk.trim());
 
-        setProgress(5 + ((i + 1) / chunks.length) * 85);
+        for (let i = 0; i < chunks.length; i++) {
+          if (signal.aborted) throw new DOMException('Aborted', 'AbortError'); 
 
-        if (i < chunks.length - 1) {
-          await new Promise(resolve => {
-            const timeout = setTimeout(resolve, 8000); 
-            signal.addEventListener('abort', () => {
-              clearTimeout(timeout);
-              resolve();
+          let attempt = 0;
+          let maxAttempts = 3; 
+          let chunkData = null;
+
+          while (attempt < maxAttempts) {
+            if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+
+            setStatusMsg(lang === 'en' 
+              ? `Parsing batch ${i + 1} of ${chunks.length}... ${attempt > 0 ? `(Retry ${attempt})` : ''}` 
+              : `အစု ${i + 1} / ${chunks.length} ကို လုပ်ဆောင်နေပါသည်... ${attempt > 0 ? `(အကြိမ် ${attempt})` : ''}`
+            );
+            console.log(`--- EXACT TEXT SENT TO AI (Batch ${i+1}) ---`, JSON.stringify(chunks[i]));
+            // Send sessionToken/uid (server reads key from Supabase) or userCustomKey
+            const apiBody = user
+              ? { rawInput: chunks[i], uid: user.id || user.uid, sessionToken: getToken() }
+              : { rawInput: chunks[i], userCustomKey };
+            const response = await fetch('/api/parse', {
+              method: 'POST',
+              headers: apiHeaders(),
+              body: JSON.stringify(apiBody),
+              signal: signal
             });
-          });
+
+            if (response.ok) {
+              chunkData = await response.json();
+              break; 
+            }
+
+            let errorMessage = "Server error.";
+            try {
+              const errorData = await response.json();
+              errorMessage = (errorData.error || "").toLowerCase();
+            } catch (err) { console.warn('Error response parse failed:', err.message); }
+
+            if (errorMessage.includes('demand') || errorMessage.includes('busy') || response.status === 503) {
+              attempt++;
+              if (attempt >= maxAttempts) throw new Error("High Demand");
+              
+              setStatusMsg(lang === 'en' ? `Server busy. Waiting 15s...` : `ဆာဗာ အလုပ်များနေပါသည်။ ၁၅ စက္ကန့် စောင့်ပါ...`);
+              await new Promise(resolve => {
+                 const timeout = setTimeout(resolve, 15000); 
+                 signal.addEventListener('abort', () => { clearTimeout(timeout); resolve(); });
+              });
+            } else {
+              throw new Error(errorMessage); 
+            }
+          }
+
+          const newQuestions = Array.isArray(chunkData) ? chunkData : (chunkData.questions || []);
+          
+          const formattedBatch = newQuestions.map((q) => ({
+            ...q,
+            type: (q.type || 'mcq').toLowerCase(),
+            question: q.question || "Question text missing",
+            options: q.options || [],
+            correctAnswerIndex: q.correctAnswerIndex ?? 0,
+            answerText: q.answerText || "",
+            colA: q.colA || [],
+            colB: q.colB || [],
+            correctMatches: q.correctMatches || {}
+          }));
+
+          allQuestionsAccumulator = [...allQuestionsAccumulator, ...formattedBatch];
+
+          setProgress(5 + ((i + 1) / chunks.length) * 85);
+
+          if (i < chunks.length - 1) {
+            await new Promise(resolve => {
+              const timeout = setTimeout(resolve, 8000); 
+              signal.addEventListener('abort', () => {
+                clearTimeout(timeout);
+                resolve();
+              });
+            });
+          }
         }
       } 
 
@@ -1985,6 +2029,7 @@ export default function App() {
                           type="button"
                           onClick={() => {
                             setUploadedFileName('');
+                            setUploadedPdfBase64(null);
                             setRawInput('');
                             setIsScannedFileNotice(false);
                             if (fileInputRef.current) fileInputRef.current.value = '';
@@ -2108,7 +2153,7 @@ export default function App() {
             <div className="flex flex-col md:flex-row gap-3 mt-4">
               <button 
                 onClick={handleAI_Import} 
-                disabled={isProcessing || isSuccess || !rawInput}
+                disabled={isProcessing || isSuccess || (!rawInput && !uploadedPdfBase64)}
                 className={`flex-[2] py-4 text-white rounded-xl font-bold uppercase text-sm tracking-wide shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 ${isSuccess ? 'bg-green-600 hover:bg-green-500' : 'bg-blue-600 hover:bg-blue-500'}`}
               >
                 {isProcessing ? (

@@ -71,8 +71,24 @@ export async function extractDocxText(file) {
 }
 
 /**
+ * Helper to convert an ArrayBuffer to base64 string safely
+ */
+export function arrayBufferToBase64(buffer) {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const len = bytes.byteLength;
+  const chunkSize = 8192;
+  for (let i = 0; i < len; i += chunkSize) {
+    const chunk = bytes.subarray(i, Math.min(i + chunkSize, len));
+    binary += String.fromCharCode.apply(null, chunk);
+  }
+  return btoa(binary);
+}
+
+/**
  * Extract text from a digital or scanned PDF (.pdf)
- * Performs heuristic density check: if text density < 50 chars/page, marks as scanned.
+ * If the PDF is scanned or image-based (text density < 20 chars/page),
+ * base64 data is attached so AI vision OCR can read it directly.
  */
 export async function extractPdfText(file) {
   const arrayBuffer = await file.arrayBuffer();
@@ -93,10 +109,18 @@ export async function extractPdfText(file) {
 
   const cleanText = fullText.trim();
   const charDensity = cleanText.length / Math.max(1, numPages);
-  const isScanned = charDensity < 50;
+  // Mark as scanned if average chars per page is low (< 20)
+  const isScanned = charDensity < 20;
+
+  // Generate base64 if scanned or text is empty, so Gemini Vision OCR can read it
+  let pdfBase64 = null;
+  if (isScanned || !cleanText) {
+    pdfBase64 = arrayBufferToBase64(arrayBuffer);
+  }
 
   return {
     text: cleanText,
+    pdfBase64,
     numPages,
     charDensity,
     isScanned

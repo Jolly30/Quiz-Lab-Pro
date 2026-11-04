@@ -52,7 +52,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { rawInput, userCustomKey, uid, sessionToken } = req.body;
+    const { rawInput, pdfBase64, userCustomKey, uid, sessionToken } = req.body;
     const token = req.headers['x-session-token'] || sessionToken;
 
     // Resolve API key: Supabase user key → client custom key → server env
@@ -104,18 +104,21 @@ export default async function handler(req, res) {
     }
 
     // --- Input validation & sanitization ---
-    if (!rawInput || typeof rawInput !== 'string') {
-      return res.status(400).json({ error: 'Invalid input: raw text is required.' });
+    if (!pdfBase64 && (!rawInput || typeof rawInput !== 'string')) {
+      return res.status(400).json({ error: 'Invalid input: raw text or document is required.' });
     }
 
-    const sanitizedInput = rawInput
-      .replace(/<(?!\/?u\b)[^>]*>/gi, '')  // strip HTML tags EXCEPT <u> and </u>
-      // eslint-disable-next-line no-control-regex
-      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')  // strip control chars
-      .trim()
-      .slice(0, 100000);              // cap at 100k chars
+    let sanitizedInput = '';
+    if (rawInput && typeof rawInput === 'string') {
+      sanitizedInput = rawInput
+        .replace(/<(?!\/?u\b)[^>]*>/gi, '')  // strip HTML tags EXCEPT <u> and </u>
+        // eslint-disable-next-line no-control-regex
+        .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')  // strip control chars
+        .trim()
+        .slice(0, 100000);              // cap at 100k chars
+    }
 
-    if (sanitizedInput.length === 0) {
+    if (!pdfBase64 && sanitizedInput.length === 0) {
       return res.status(400).json({ error: 'Input text is empty after sanitization.' });
     }
 
@@ -219,6 +222,23 @@ OUTPUT RULES:
 Return ONLY a raw, valid JSON array. Do not wrap in \`\`\`json blockticks. No markdown.
 `;
 
+    const requestParts = [];
+    if (pdfBase64) {
+      requestParts.push({
+        text: systemPrompt + "\n\nPlease extract and parse all questions directly from the attached document into the specified JSON format."
+      });
+      requestParts.push({
+        inlineData: {
+          mimeType: 'application/pdf',
+          data: pdfBase64
+        }
+      });
+    } else {
+      requestParts.push({
+        text: systemPrompt + "\n\nRaw Text to Parse:\n" + sanitizedInput
+      });
+    }
+
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`,
       {
@@ -226,7 +246,7 @@ Return ONLY a raw, valid JSON array. Do not wrap in \`\`\`json blockticks. No ma
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{
-            parts: [{ text: systemPrompt + "\n\nRaw Text to Parse:\n" + sanitizedInput }]
+            parts: requestParts
           }],
           generationConfig: {
             responseMimeType: "application/json",
