@@ -147,7 +147,11 @@ const t = {
     scannedPdfWarn: "Notice: Low text density detected. If this is a scanned PDF, optical character recognition will be applied.",
     invalidFileType: "Please upload a supported file: .docx, .pdf, or .txt",
     fileSizeError: "File exceeds 10MB limit. Please choose a smaller file.",
-    pasteOrTypeHint: "Or paste / edit text manually:"
+    pasteOrTypeHint: "Or paste / edit text manually:",
+    tabUploadDoc: "Upload Document",
+    tabManualPaste: "Copy & Paste Text",
+    fileUploadedReady: "Document loaded and ready to parse",
+    pasteAreaHint: "Paste text from Word, PDF, or websites. Underlined text <u>...</u> will be recognized automatically."
   },
   mm: {
     appTitle: "QUIZ LAB PRO",
@@ -241,7 +245,11 @@ const t = {
     scannedPdfWarn: "သတိပေးချက် - စာသားပါဝင်မှုနည်းပါးသော PDF ဖြစ်နေသဖြင့် စာလုံးဖတ်စနစ်ဖြင့် အလိုအလျောက် ခွဲခြမ်းပေးပါမည်။",
     invalidFileType: "ကျေးဇူးပြု၍ .docx, .pdf သို့မဟုတ် .txt ဖိုင်များကိုသာ အသုံးပြုပေးပါ။",
     fileSizeError: "ဖိုင်ဆိုဒ် 10MB ထက်ကျော်လွန်နေပါသည်။ ပိုမိုသေးငယ်သောဖိုင်ကို ရွေးချယ်ပါ။",
-    pasteOrTypeHint: "သို့မဟုတ် စာသားများကို ကိုယ်တိုင် ကူးထည့်ပါ -"
+    pasteOrTypeHint: "သို့မဟုတ် စာသားများကို ကိုယ်တိုင် ကူးထည့်ပါ -",
+    tabUploadDoc: "စာရွက်စာတမ်း ဖိုင်တင်ရန်",
+    tabManualPaste: "စာသား ကူးထည့်ရန်",
+    fileUploadedReady: "စာရွက်စာတမ်း ဖတ်ရှုပြီးပါပြီ၊ မော်ဂျူးဖန်တီးနိုင်ပါပြီ",
+    pasteAreaHint: "Word, PDF သို့မဟုတ် ဝဘ်ဆိုက်များမှ စာသားများကို ကူးထည့်ပါ။ မျဉ်းသားထားသော စာလုံးများ <u>...</u> ကို အလိုအလျောက် မှတ်သားပေးပါမည်။"
   }
 };
 
@@ -291,6 +299,7 @@ export default function App() {
   const [previewFolderName, setPreviewFolderName] = useState('');
 
   // Phase 3: Direct File Ingestion States
+  const [importMode, setImportMode] = useState('file'); // 'file' | 'text'
   const [uploadedFileName, setUploadedFileName] = useState('');
   const [isFileReading, setIsFileReading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -1847,137 +1856,206 @@ export default function App() {
                </p>
             </div>
             
-            <input type="text" value={moduleName} onChange={(e)=>setModuleName(e.target.value)} placeholder={t[lang].moduleNamePlaceholder} className={`w-full p-4 rounded-xl border mb-4 font-medium outline-none transition-all ${th.inputBg}`} />
+            <input type="text" value={moduleName} onChange={(e)=>setModuleName(e.target.value)} placeholder={t[lang].moduleNamePlaceholder} className={`w-full p-4 rounded-xl border mb-6 font-medium outline-none transition-all ${th.inputBg}`} />
 
-            {/* PHASE 3: DIRECT FILE UPLOAD DROPZONE */}
-            <input 
-              type="file" 
-              ref={fileInputRef} 
-              onChange={(e) => {
-                if (e.target.files && e.target.files[0]) {
-                  handleFileUpload(e.target.files[0]);
-                }
-              }} 
-              accept=".docx,.pdf,.txt" 
-              className="hidden" 
-            />
+            {/* SEPARATED IMPORT MODE TABS */}
+            <div className={`p-1.5 rounded-2xl border mb-6 flex gap-2 ${isDark ? 'bg-[#0B1120] border-slate-800' : 'bg-slate-100 border-slate-200'}`}>
+              <button
+                type="button"
+                onClick={() => setImportMode('file')}
+                className={`flex-1 py-3 px-4 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all ${
+                  importMode === 'file'
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : isDark
+                      ? 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
+                }`}
+              >
+                <UploadCloud className="w-4 h-4" />
+                {t[lang].tabUploadDoc}
+              </button>
 
-            <div
-              onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
-              onDragLeave={() => setIsDragOver(false)}
-              onDrop={(e) => {
-                e.preventDefault();
-                setIsDragOver(false);
-                if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-                  handleFileUpload(e.dataTransfer.files[0]);
-                }
-              }}
-              onClick={() => fileInputRef.current?.click()}
-              className={`mb-6 p-6 rounded-2xl border-2 border-dashed transition-all cursor-pointer flex flex-col items-center justify-center text-center group ${
-                isDragOver
-                  ? 'border-blue-500 bg-blue-500/10 scale-[1.01]'
-                  : isDark 
-                    ? 'border-slate-700/80 hover:border-blue-500/50 hover:bg-slate-800/40 bg-[#0B1120]' 
-                    : 'border-slate-300 hover:border-blue-400 hover:bg-blue-50/50 bg-slate-50/50'
-              }`}
-            >
-              <div className={`p-3.5 rounded-2xl mb-3 transition-transform group-hover:scale-110 ${
-                isDark ? 'bg-blue-500/10 text-blue-400' : 'bg-blue-100 text-blue-600'
-              }`}>
-                {isFileReading ? (
-                  <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
-                ) : uploadedFileName ? (
-                  <FileCheck2 className="w-6 h-6 text-green-500" />
-                ) : (
-                  <UploadCloud className="w-6 h-6" />
+              <button
+                type="button"
+                onClick={() => setImportMode('text')}
+                className={`flex-1 py-3 px-4 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all ${
+                  importMode === 'text'
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : isDark
+                      ? 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
+                }`}
+              >
+                <FileText className="w-4 h-4" />
+                {t[lang].tabManualPaste}
+              </button>
+            </div>
+
+            {/* OPTION 1: FILE UPLOAD MODE */}
+            {importMode === 'file' && (
+              <div className="animate-in fade-in duration-300">
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      handleFileUpload(e.target.files[0]);
+                    }
+                  }} 
+                  accept=".docx,.pdf,.txt" 
+                  className="hidden" 
+                />
+
+                <div
+                  onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+                  onDragLeave={() => setIsDragOver(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setIsDragOver(false);
+                    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                      handleFileUpload(e.dataTransfer.files[0]);
+                    }
+                  }}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`p-10 rounded-2xl border-2 border-dashed transition-all cursor-pointer flex flex-col items-center justify-center text-center group ${
+                    isDragOver
+                      ? 'border-blue-500 bg-blue-500/10 scale-[1.01]'
+                      : isDark 
+                        ? 'border-slate-700/80 hover:border-blue-500/50 hover:bg-slate-800/40 bg-[#0B1120]' 
+                        : 'border-slate-300 hover:border-blue-400 hover:bg-blue-50/50 bg-slate-50/50'
+                  }`}
+                >
+                  <div className={`p-4 rounded-2xl mb-4 transition-transform group-hover:scale-110 ${
+                    isDark ? 'bg-blue-500/10 text-blue-400' : 'bg-blue-100 text-blue-600'
+                  }`}>
+                    {isFileReading ? (
+                      <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+                    ) : uploadedFileName ? (
+                      <FileCheck2 className="w-8 h-8 text-green-500" />
+                    ) : (
+                      <UploadCloud className="w-8 h-8" />
+                    )}
+                  </div>
+
+                  <h4 className={`text-base font-black uppercase tracking-wider mb-2 ${th.textMain}`}>
+                    {isFileReading 
+                      ? t[lang].readingFile 
+                      : uploadedFileName 
+                        ? `${t[lang].fileExtractedNotice} ${uploadedFileName}` 
+                        : t[lang].dropzoneTitle}
+                  </h4>
+
+                  <p className="text-xs text-slate-500 font-medium max-w-md">
+                    {uploadedFileName ? 'Click or drop another file to replace' : t[lang].dropzoneSubtitle}
+                  </p>
+
+                  {uploadedFileName && rawInput && (
+                    <div className="mt-4 px-4 py-2 rounded-xl bg-green-500/10 border border-green-500/20 text-green-600 dark:text-green-400 text-xs font-bold flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>{t[lang].fileUploadedReady} ({rawInput.length.toLocaleString()} characters)</span>
+                    </div>
+                  )}
+
+                  {isScannedFileNotice && (
+                    <div className="mt-3 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-500 text-[11px] font-semibold flex items-center gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                      <span>{t[lang].scannedPdfWarn}</span>
+                    </div>
+                  )}
+                </div>
+
+                {uploadedFileName && rawInput && (
+                  <div className="mt-4 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setImportMode('text');
+                      }}
+                      className="text-xs font-bold text-blue-500 hover:underline flex items-center gap-1"
+                    >
+                      <FileText className="w-3.5 h-3.5" />
+                      Inspect / Edit extracted text in Manual view &rarr;
+                    </button>
+                  </div>
                 )}
               </div>
+            )}
 
-              <h4 className={`text-sm font-black uppercase tracking-wider mb-1 ${th.textMain}`}>
-                {isFileReading 
-                  ? t[lang].readingFile 
-                  : uploadedFileName 
-                    ? `${t[lang].fileExtractedNotice} ${uploadedFileName}` 
-                    : t[lang].dropzoneTitle}
-              </h4>
-
-              <p className="text-xs text-slate-500 font-medium">
-                {uploadedFileName ? 'Click or drop another file to replace' : t[lang].dropzoneSubtitle}
-              </p>
-
-              {isScannedFileNotice && (
-                <div className="mt-3 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-500 text-[11px] font-semibold flex items-center gap-1.5">
-                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                  <span>{t[lang].scannedPdfWarn}</span>
+            {/* OPTION 2: MANUAL COPY & PASTE MODE */}
+            {importMode === 'text' && (
+              <div className="animate-in fade-in duration-300">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5" />
+                    {t[lang].pasteAreaHint}
+                  </label>
+                  {rawInput && (
+                    <button
+                      type="button"
+                      onClick={() => { setRawInput(''); setUploadedFileName(''); setIsScannedFileNotice(false); }}
+                      className="text-[10px] font-bold text-slate-400 hover:text-red-500 uppercase tracking-widest transition-colors"
+                    >
+                      Clear Text
+                    </button>
+                  )}
                 </div>
-              )}
-            </div>
+                
+                <textarea 
+                  value={rawInput} 
+                  onChange={(e)=>setRawInput(e.target.value)} 
+                  onPaste={(e) => {
+                    const htmlData = e.clipboardData.getData('text/html');
+                    if (htmlData && (htmlData.includes('text-decoration:underline') || htmlData.includes('text-decoration: underline') || htmlData.includes('<u') || htmlData.includes('style="text-decoration:underline'))) {
+                      try {
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(htmlData, 'text/html');
 
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
-                <FileText className="w-3.5 h-3.5" />
-                {t[lang].pasteOrTypeHint}
-              </label>
-              {rawInput && (
-                <button
-                  type="button"
-                  onClick={() => { setRawInput(''); setUploadedFileName(''); setIsScannedFileNotice(false); }}
-                  className="text-[10px] font-bold text-slate-400 hover:text-red-500 uppercase tracking-widest transition-colors"
-                >
-                  Clear Text
-                </button>
-              )}
-            </div>
-            
-            <textarea 
-              value={rawInput} 
-              onChange={(e)=>setRawInput(e.target.value)} 
-              onPaste={(e) => {
-                const htmlData = e.clipboardData.getData('text/html');
-                if (htmlData && (htmlData.includes('text-decoration:underline') || htmlData.includes('text-decoration: underline') || htmlData.includes('<u') || htmlData.includes('style="text-decoration:underline'))) {
-                  try {
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(htmlData, 'text/html');
+                        // Find all underline nodes (Word spans with text-decoration or <u> elements)
+                        const underlineNodes = doc.querySelectorAll('u, [style*="text-decoration: underline"], [style*="text-decoration:underline"]');
+                        underlineNodes.forEach(node => {
+                          const text = node.textContent;
+                          if (text && text.trim().length > 0) {
+                            const uTag = doc.createElement('u');
+                            uTag.textContent = text;
+                            node.parentNode?.replaceChild(uTag, node);
+                          }
+                        });
 
-                    // Find all underline nodes (Word spans with text-decoration or <u> elements)
-                    const underlineNodes = doc.querySelectorAll('u, [style*="text-decoration: underline"], [style*="text-decoration:underline"]');
-                    underlineNodes.forEach(node => {
-                      const text = node.textContent;
-                      if (text && text.trim().length > 0) {
-                        const uTag = doc.createElement('u');
-                        uTag.textContent = text;
-                        node.parentNode?.replaceChild(uTag, node);
+                        // Convert HTML to clean plain text keeping <u> tags
+                        let processedText = doc.body.innerHTML
+                          .replace(/<br\s*\/?>/gi, '\n')
+                          .replace(/<\/p>/gi, '\n')
+                          .replace(/<\/div>/gi, '\n')
+                          .replace(/<(?!\/?u\b)[^>]+>/gi, '') // strip all tags EXCEPT <u> and </u>
+                          .replace(/&nbsp;/g, ' ')
+                          .replace(/&amp;/g, '&')
+                          .replace(/&lt;/g, '<')
+                          .replace(/&gt;/g, '>');
+
+                        if (processedText.includes('<u>')) {
+                          e.preventDefault();
+                          const target = e.target;
+                          const start = target.selectionStart || 0;
+                          const end = target.selectionEnd || 0;
+                          const currentVal = rawInput || '';
+                          const nextVal = currentVal.substring(0, start) + processedText + currentVal.substring(end);
+                          setRawInput(nextVal);
+                        }
+                      } catch (err) {
+                        console.warn('Rich paste handler error:', err);
                       }
-                    });
-
-                    // Convert HTML to clean plain text keeping <u> tags
-                    let processedText = doc.body.innerHTML
-                      .replace(/<br\s*\/?>/gi, '\n')
-                      .replace(/<\/p>/gi, '\n')
-                      .replace(/<\/div>/gi, '\n')
-                      .replace(/<(?!\/?u\b)[^>]+>/gi, '') // strip all tags EXCEPT <u> and </u>
-                      .replace(/&nbsp;/g, ' ')
-                      .replace(/&amp;/g, '&')
-                      .replace(/&lt;/g, '<')
-                      .replace(/&gt;/g, '>');
-
-                    if (processedText.includes('<u>')) {
-                      e.preventDefault();
-                      const target = e.target;
-                      const start = target.selectionStart || 0;
-                      const end = target.selectionEnd || 0;
-                      const currentVal = rawInput || '';
-                      const nextVal = currentVal.substring(0, start) + processedText + currentVal.substring(end);
-                      setRawInput(nextVal);
                     }
-                  } catch (err) {
-                    console.warn('Rich paste handler error:', err);
-                  }
-                }
-              }}
-              placeholder={t[lang].pasteRawTextPlaceholder} 
-              className={`w-full h-80 p-5 rounded-xl border font-mono text-sm mb-6 outline-none transition-all leading-relaxed ${th.inputBg}`} 
-            />
+                  }}
+                  placeholder={t[lang].pasteRawTextPlaceholder} 
+                  className={`w-full h-80 p-5 rounded-xl border font-mono text-sm mb-2 outline-none transition-all leading-relaxed ${th.inputBg}`} 
+                />
+
+                <div className="flex justify-between items-center text-[10px] text-slate-500 font-medium mb-4">
+                  <span>{rawInput ? `${rawInput.length.toLocaleString()} characters` : 'Empty'}</span>
+                  <span>Word underline styling is preserved automatically</span>
+                </div>
+              </div>
+            )}
             
             {(isProcessing || isSuccess) && (
               <div className="w-full mb-6 animate-in fade-in duration-500">
