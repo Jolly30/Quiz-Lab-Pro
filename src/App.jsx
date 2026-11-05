@@ -301,6 +301,7 @@ export default function App() {
   // Phase 3: Direct File Ingestion States
   const [importMode, setImportMode] = useState('file'); // 'file' | 'text'
   const [uploadedFileName, setUploadedFileName] = useState('');
+  const [uploadedFileSize, setUploadedFileSize] = useState(0);
   const [uploadedPdfBase64, setUploadedPdfBase64] = useState(null);
   const [isFileReading, setIsFileReading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -663,6 +664,7 @@ export default function App() {
         setRawInput(parsed.text || '');
         setUploadedPdfBase64(parsed.pdfBase64 || null);
         setUploadedFileName(file.name);
+        setUploadedFileSize(file.size || 0);
         
         // Auto-fill module name if not already set
         if (!moduleName.trim()) {
@@ -2007,8 +2009,18 @@ export default function App() {
                               Ready
                             </span>
                           </div>
-                          <p className="text-xs text-slate-500 font-medium mt-0.5">
-                            {rawInput ? `${rawInput.length.toLocaleString()} characters extracted` : 'Extracted'}
+                          <p className="text-xs text-slate-500 font-medium mt-0.5 flex items-center gap-2">
+                            <span>
+                              {uploadedFileSize > 0 ? (
+                                uploadedFileSize >= 1024 * 1024
+                                  ? `${(uploadedFileSize / (1024 * 1024)).toFixed(2)} MB`
+                                  : `${Math.round(uploadedFileSize / 1024)} KB`
+                              ) : ''}
+                            </span>
+                            {uploadedFileSize > 0 && <span>•</span>}
+                            <span>
+                              {rawInput ? `${rawInput.length.toLocaleString()} characters extracted` : (uploadedPdfBase64 ? 'Document ready for AI scan' : 'Extracted')}
+                            </span>
                           </p>
                         </div>
                       </div>
@@ -2029,6 +2041,7 @@ export default function App() {
                           type="button"
                           onClick={() => {
                             setUploadedFileName('');
+                            setUploadedFileSize(0);
                             setUploadedPdfBase64(null);
                             setRawInput('');
                             setIsScannedFileNotice(false);
