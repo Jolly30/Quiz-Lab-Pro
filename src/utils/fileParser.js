@@ -92,38 +92,51 @@ export function arrayBufferToBase64(buffer) {
  */
 export async function extractPdfText(file) {
   const arrayBuffer = await file.arrayBuffer();
-  const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
-  const pdf = await loadingTask.promise;
+  const pdfBase64 = arrayBufferToBase64(arrayBuffer);
 
   let fullText = '';
-  const numPages = pdf.numPages;
+  let numPages = 1;
+  let isScanned = false;
+  let charDensity = 0;
 
-  for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-    const page = await pdf.getPage(pageNum);
-    const textContent = await page.getTextContent();
-    
-    // Join items with appropriate whitespace
-    const pageText = textContent.items.map(item => item.str).join(' ');
-    fullText += pageText + '\n\n';
-  }
+  try {
+    // Attempt local text layer extraction via pdfjsLib
+    const loadingTask = pdfjsLib.getDocument({
+      data: new Uint8Array(arrayBuffer),
+      useWorkerFetch: false,
+      isEvalSupported: false,
+      useSystemFonts: true
+    });
+    const pdf = await loadingTask.promise;
+    numPages = pdf.numPages;
 
-  const cleanText = fullText.trim();
-  const charDensity = cleanText.length / Math.max(1, numPages);
-  // Mark as scanned if average chars per page is low (< 20)
-  const isScanned = charDensity < 20;
+    for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+      try {
+        const page = await pdf.getPage(pageNum);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items.map(item => item.str).join(' ');
+        fullText += pageText + '\n\n';
+      } catch (pageErr) {
+        console.warn(`Error reading PDF page ${pageNum}:`, pageErr);
+      }
+    }
 
-  // Generate base64 if scanned or text is empty, so Gemini Vision OCR can read it
-  let pdfBase64 = null;
-  if (isScanned || !cleanText) {
-    pdfBase64 = arrayBufferToBase64(arrayBuffer);
+    fullText = fullText.trim();
+    charDensity = fullText.length / Math.max(1, numPages);
+    isScanned = charDensity < 20;
+  } catch (pdfErr) {
+    // If PDF.js encounters a worker error or parse error, fallback to direct base64 Vision OCR!
+    console.warn('PDF.js client extraction failed, falling back to direct AI Vision OCR:', pdfErr);
+    isScanned = true;
+    fullText = '';
   }
 
   return {
-    text: cleanText,
-    pdfBase64,
+    text: fullText,
+    pdfBase64: (isScanned || !fullText) ? pdfBase64 : null,
     numPages,
     charDensity,
-    isScanned
+    isScanned: isScanned || !fullText
   };
 }
 
