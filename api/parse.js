@@ -52,7 +52,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { rawInput, pdfBase64, userCustomKey, uid, sessionToken } = req.body;
+    const { rawInput, pdfBase64, fileUri, userCustomKey, uid, sessionToken } = req.body;
     const token = req.headers['x-session-token'] || sessionToken;
 
     // Resolve API key: Supabase user key → client custom key → server env
@@ -104,7 +104,7 @@ export default async function handler(req, res) {
     }
 
     // --- Input validation & sanitization ---
-    if (!pdfBase64 && (!rawInput || typeof rawInput !== 'string')) {
+    if (!fileUri && !pdfBase64 && (!rawInput || typeof rawInput !== 'string')) {
       return res.status(400).json({ error: 'Invalid input: raw text or document is required.' });
     }
 
@@ -118,7 +118,7 @@ export default async function handler(req, res) {
         .slice(0, 100000);              // cap at 100k chars
     }
 
-    if (!pdfBase64 && sanitizedInput.length === 0) {
+    if (!fileUri && !pdfBase64 && sanitizedInput.length === 0) {
       return res.status(400).json({ error: 'Input text is empty after sanitization.' });
     }
 
@@ -223,7 +223,17 @@ Return ONLY a raw, valid JSON array. Do not wrap in \`\`\`json blockticks. No ma
 `;
 
     const requestParts = [];
-    if (pdfBase64) {
+    if (fileUri) {
+      requestParts.push({
+        text: systemPrompt + "\n\nPlease extract and parse all questions directly from the attached document into the specified JSON format."
+      });
+      requestParts.push({
+        fileData: {
+          mimeType: 'application/pdf',
+          fileUri
+        }
+      });
+    } else if (pdfBase64) {
       requestParts.push({
         text: systemPrompt + "\n\nPlease extract and parse all questions directly from the attached document into the specified JSON format."
       });

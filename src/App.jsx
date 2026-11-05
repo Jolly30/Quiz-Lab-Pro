@@ -302,6 +302,7 @@ export default function App() {
   const [importMode, setImportMode] = useState('file'); // 'file' | 'text'
   const [manualRawInput, setManualRawInput] = useState('');
   const [fileExtractedText, setFileExtractedText] = useState('');
+  const [uploadedFileObj, setUploadedFileObj] = useState(null);
   const [uploadedFileName, setUploadedFileName] = useState('');
   const [uploadedFileSize, setUploadedFileSize] = useState(0);
   const [uploadedPdfBase64, setUploadedPdfBase64] = useState(null);
@@ -665,6 +666,7 @@ export default function App() {
       if (parsed && (parsed.text || parsed.pdfBase64)) {
         setFileExtractedText(parsed.text || '');
         setUploadedPdfBase64(parsed.pdfBase64 || null);
+        setUploadedFileObj(file);
         setUploadedFileName(file.name);
         setUploadedFileSize(file.size || 0);
         
@@ -717,14 +719,62 @@ export default function App() {
       
       const folderToSave = selectedFolderForImport.trim();
 
-      // IF SCANNED/IMAGE PDF: Send directly to Gemini Vision OCR
-      if (importMode === 'file' && uploadedPdfBase64) {
+      // IF SCANNED/IMAGE PDF: Send via Google AI File API or direct base64
+      if (importMode === 'file' && (uploadedPdfBase64 || uploadedFileObj)) {
+        setStatusMsg(lang === 'en' ? 'Preparing document for AI scan...' : 'စာရွက်စာတမ်းကို AI စာလုံးဖတ်စနစ်အတွက် ပြင်ဆင်နေပါသည်...');
+        setProgress(20);
+
+        let fileUri = null;
+
+        // If file object is available, upload directly to Google AI File API via resumable URL
+        // This avoids Vercel 4.5MB request body limit!
+        if (uploadedFileObj) {
+          try {
+            setStatusMsg(lang === 'en' ? 'Uploading document to AI vision...' : 'စာရွက်စာတမ်းကို AI စနစ်သို့ တင်ပို့နေပါသည်...');
+            setProgress(35);
+
+            const urlBody = user
+              ? { uid: user.id || user.uid, sessionToken: getToken(), fileSize: uploadedFileObj.size, mimeType: 'application/pdf', displayName: uploadedFileName }
+              : { userCustomKey, fileSize: uploadedFileObj.size, mimeType: 'application/pdf', displayName: uploadedFileName };
+
+            const initRes = await fetch('/api/upload-url', {
+              method: 'POST',
+              headers: apiHeaders(),
+              body: JSON.stringify(urlBody),
+              signal: signal
+            });
+
+            if (initRes.ok) {
+              const { uploadUrl } = await initRes.json();
+              if (uploadUrl) {
+                const directUploadRes = await fetch(uploadUrl, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Length': String(uploadedFileObj.size),
+                    'X-Goog-Upload-Offset': '0',
+                    'X-Goog-Upload-Command': 'upload, finalize'
+                  },
+                  body: uploadedFileObj,
+                  signal: signal
+                });
+
+                if (directUploadRes.ok) {
+                  const uploadData = await directUploadRes.json();
+                  fileUri = uploadData.file?.uri || null;
+                }
+              }
+            }
+          } catch (uploadErr) {
+            console.warn('Direct Google AI file upload failed, falling back to base64 payload:', uploadErr);
+          }
+        }
+
         setStatusMsg(lang === 'en' ? 'AI Vision reading document pages...' : 'AI စာလုံးဖတ်စနစ်ဖြင့် စာရွက်စာတမ်းကို ခွဲခြမ်းနေပါသည်...');
-        setProgress(30);
+        setProgress(60);
 
         const apiBody = user
-          ? { pdfBase64: uploadedPdfBase64, uid: user.id || user.uid, sessionToken: getToken() }
-          : { pdfBase64: uploadedPdfBase64, userCustomKey };
+          ? { fileUri, pdfBase64: fileUri ? null : uploadedPdfBase64, uid: user.id || user.uid, sessionToken: getToken() }
+          : { fileUri, pdfBase64: fileUri ? null : uploadedPdfBase64, userCustomKey };
 
         const response = await fetch('/api/parse', {
           method: 'POST',
@@ -2045,6 +2095,7 @@ export default function App() {
                           onClick={() => {
                             setUploadedFileName('');
                             setUploadedFileSize(0);
+                            setUploadedFileObj(null);
                             setUploadedPdfBase64(null);
                             setFileExtractedText('');
                             setIsScannedFileNotice(false);
