@@ -300,6 +300,8 @@ export default function App() {
 
   // Phase 3: Direct File Ingestion States
   const [importMode, setImportMode] = useState('file'); // 'file' | 'text'
+  const [manualRawInput, setManualRawInput] = useState('');
+  const [fileExtractedText, setFileExtractedText] = useState('');
   const [uploadedFileName, setUploadedFileName] = useState('');
   const [uploadedFileSize, setUploadedFileSize] = useState(0);
   const [uploadedPdfBase64, setUploadedPdfBase64] = useState(null);
@@ -661,7 +663,7 @@ export default function App() {
       const parsed = await parseDocumentFile(file);
       
       if (parsed && (parsed.text || parsed.pdfBase64)) {
-        setRawInput(parsed.text || '');
+        setFileExtractedText(parsed.text || '');
         setUploadedPdfBase64(parsed.pdfBase64 || null);
         setUploadedFileName(file.name);
         setUploadedFileSize(file.size || 0);
@@ -688,7 +690,8 @@ export default function App() {
   };
 
   const handleAI_Import = async () => {
-    if (!rawInput && !uploadedPdfBase64) return;
+    const textToProcess = importMode === 'file' ? fileExtractedText : manualRawInput;
+    if (!textToProcess && !uploadedPdfBase64) return;
 
     abortControllerRef.current = new AbortController();
     const signal = abortControllerRef.current.signal;
@@ -715,7 +718,7 @@ export default function App() {
       const folderToSave = selectedFolderForImport.trim();
 
       // IF SCANNED/IMAGE PDF: Send directly to Gemini Vision OCR
-      if (uploadedPdfBase64) {
+      if (importMode === 'file' && uploadedPdfBase64) {
         setStatusMsg(lang === 'en' ? 'AI Vision reading document pages...' : 'AI စာလုံးဖတ်စနစ်ဖြင့် စာရွက်စာတမ်းကို ခွဲခြမ်းနေပါသည်...');
         setProgress(30);
 
@@ -755,7 +758,7 @@ export default function App() {
         }));
       } else {
         // STANDARD TEXT / DOCX BATCH PARSING
-        const lines = rawInput.split(/\n+/);
+        const lines = (textToProcess || '').split(/\n+/);
         const MAX_CHARS = 20000; 
         const chunks = [];
         let currentChunk = "";
@@ -2019,7 +2022,7 @@ export default function App() {
                             </span>
                             {uploadedFileSize > 0 && <span>•</span>}
                             <span>
-                              {rawInput ? `${rawInput.length.toLocaleString()} characters extracted` : (uploadedPdfBase64 ? 'Document ready for AI scan' : 'Extracted')}
+                              {fileExtractedText ? `${fileExtractedText.length.toLocaleString()} characters extracted` : (uploadedPdfBase64 ? 'Document ready for AI scan' : 'Extracted')}
                             </span>
                           </p>
                         </div>
@@ -2043,7 +2046,7 @@ export default function App() {
                             setUploadedFileName('');
                             setUploadedFileSize(0);
                             setUploadedPdfBase64(null);
-                            setRawInput('');
+                            setFileExtractedText('');
                             setIsScannedFileNotice(false);
                             if (fileInputRef.current) fileInputRef.current.value = '';
                           }}
@@ -2076,10 +2079,10 @@ export default function App() {
                     <FileText className="w-3.5 h-3.5" />
                     {t[lang].pasteAreaHint}
                   </label>
-                  {rawInput && (
+                  {manualRawInput && (
                     <button
                       type="button"
-                      onClick={() => { setRawInput(''); setUploadedFileName(''); setIsScannedFileNotice(false); }}
+                      onClick={() => { setManualRawInput(''); }}
                       className="text-[10px] font-bold text-slate-400 hover:text-red-500 uppercase tracking-widest transition-colors"
                     >
                       Clear Text
@@ -2088,8 +2091,8 @@ export default function App() {
                 </div>
                 
                 <textarea 
-                  value={rawInput} 
-                  onChange={(e)=>setRawInput(e.target.value)} 
+                  value={manualRawInput} 
+                  onChange={(e)=>setManualRawInput(e.target.value)} 
                   onPaste={(e) => {
                     const htmlData = e.clipboardData.getData('text/html');
                     if (htmlData && (htmlData.includes('text-decoration:underline') || htmlData.includes('text-decoration: underline') || htmlData.includes('<u') || htmlData.includes('style="text-decoration:underline'))) {
@@ -2124,9 +2127,9 @@ export default function App() {
                           const target = e.target;
                           const start = target.selectionStart || 0;
                           const end = target.selectionEnd || 0;
-                          const currentVal = rawInput || '';
+                          const currentVal = manualRawInput || '';
                           const nextVal = currentVal.substring(0, start) + processedText + currentVal.substring(end);
-                          setRawInput(nextVal);
+                          setManualRawInput(nextVal);
                         }
                       } catch (err) {
                         console.warn('Rich paste handler error:', err);
@@ -2138,7 +2141,7 @@ export default function App() {
                 />
 
                 <div className="flex justify-between items-center text-[10px] text-slate-500 font-medium mb-4">
-                  <span>{rawInput ? `${rawInput.length.toLocaleString()} characters` : 'Empty'}</span>
+                  <span>{manualRawInput ? `${manualRawInput.length.toLocaleString()} characters` : 'Empty'}</span>
                   <span>Word underline styling is preserved automatically</span>
                 </div>
               </div>
@@ -2166,7 +2169,7 @@ export default function App() {
             <div className="flex flex-col md:flex-row gap-3 mt-4">
               <button 
                 onClick={handleAI_Import} 
-                disabled={isProcessing || isSuccess || (!rawInput && !uploadedPdfBase64)}
+                disabled={isProcessing || isSuccess || (importMode === 'file' ? (!fileExtractedText && !uploadedPdfBase64) : !manualRawInput)}
                 className={`flex-[2] py-4 text-white rounded-xl font-bold uppercase text-sm tracking-wide shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 ${isSuccess ? 'bg-green-600 hover:bg-green-500' : 'bg-blue-600 hover:bg-blue-500'}`}
               >
                 {isProcessing ? (
